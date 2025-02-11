@@ -17,93 +17,36 @@
 
 package org.apache.hadoop.ozone.container.metrics;
 
-import org.apache.commons.text.WordUtils;
-import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.proto.StorageContainerDatanodeProtocolProtos.SCMCommandProto;
-import org.apache.hadoop.hdds.scm.ScmConfigKeys;
-import org.apache.hadoop.ozone.MiniOzoneCluster;
-import org.apache.hadoop.ozone.MiniOzoneHAClusterImpl;
 import org.apache.hadoop.ozone.container.common.statemachine.DatanodeQueueMetrics;
-import org.junit.Rule;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
+import org.apache.ozone.test.NonHATests;
 import org.junit.jupiter.api.Test;
-import org.junit.rules.TestRule;
-import org.junit.rules.Timeout;
-import org.apache.ozone.test.JUnit5AwareTimeout;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
 
-import java.io.IOException;
-import java.util.UUID;
-
+import static org.apache.commons.text.WordUtils.capitalize;
 import static org.apache.hadoop.ozone.container.common.statemachine.DatanodeQueueMetrics.COMMAND_DISPATCHER_QUEUE_PREFIX;
 import static org.apache.hadoop.ozone.container.common.statemachine.DatanodeQueueMetrics.STATE_CONTEXT_COMMAND_QUEUE_PREFIX;
-import static org.apache.hadoop.test.MetricsAsserts.getLongGauge;
-import static org.apache.hadoop.test.MetricsAsserts.getMetrics;
+import static org.apache.ozone.test.MetricsAsserts.getLongGauge;
+import static org.apache.ozone.test.MetricsAsserts.getMetrics;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Test for queue metrics of datanodes.
  */
-public class TestDatanodeQueueMetrics {
-
-  private MiniOzoneHAClusterImpl cluster = null;
-  private OzoneConfiguration conf;
-  private String clusterId;
-  private String scmId;
-  private String omServiceId;
-  private static int numOfOMs = 3;
-  private String scmServiceId;
-  private static int numOfSCMs = 3;
-
-  private static final Logger LOG = LoggerFactory
-      .getLogger(TestDatanodeQueueMetrics.class);
-
-  @Rule
-  public TestRule timeout = new JUnit5AwareTimeout(new Timeout(300_000));
-
-  /**
-   * Create a MiniDFSCluster for testing.
-   * <p>
-   * Ozone is made active by setting OZONE_ENABLED = true
-   *
-   * @throws IOException
-   */
-  @BeforeEach
-  public void init() throws Exception {
-    conf = new OzoneConfiguration();
-    conf.set(ScmConfigKeys.OZONE_SCM_PIPELINE_CREATION_INTERVAL, "10s");
-    clusterId = UUID.randomUUID().toString();
-    scmId = UUID.randomUUID().toString();
-    omServiceId = "om-service-test1";
-    scmServiceId = "scm-service-test1";
-    cluster = (MiniOzoneHAClusterImpl) MiniOzoneCluster.newHABuilder(conf)
-        .setClusterId(clusterId)
-        .setScmId(scmId)
-        .setOMServiceId(omServiceId)
-        .setSCMServiceId(scmServiceId)
-        .setNumOfStorageContainerManagers(numOfSCMs)
-        .setNumOfOzoneManagers(numOfOMs)
-        .setNumDatanodes(1)
-        .build();
-    cluster.waitForClusterToBeReady();
-  }
-  /**
-    * Set a timeout for each test.
-    */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Timeout(300)
+public abstract class TestDatanodeQueueMetrics implements NonHATests.TestCase {
 
   @Test
   public void testQueueMetrics() {
-
     for (SCMCommandProto.Type type: SCMCommandProto.Type.values()) {
-      Assertions.assertTrue(
-          getGauge(STATE_CONTEXT_COMMAND_QUEUE_PREFIX +
-              WordUtils.capitalize(String.valueOf(type)) + "Size") >= 0);
-      Assertions.assertTrue(
-          getGauge(COMMAND_DISPATCHER_QUEUE_PREFIX +
-              WordUtils.capitalize(String.valueOf(type)) + "Size") >= 0);
+      String typeSize = capitalize(String.valueOf(type)) + "Size";
+      assertThat(getGauge(STATE_CONTEXT_COMMAND_QUEUE_PREFIX + typeSize))
+          .isGreaterThanOrEqualTo(0);
+      assertThat(getGauge(COMMAND_DISPATCHER_QUEUE_PREFIX + typeSize))
+          .isGreaterThanOrEqualTo(0);
     }
-
   }
 
   private long getGauge(String metricName) {

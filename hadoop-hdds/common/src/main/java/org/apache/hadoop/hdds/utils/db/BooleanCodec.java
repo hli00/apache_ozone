@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hdds.utils.db;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Codec to serialize/deserialize {@link Boolean}.
@@ -34,6 +34,11 @@ public final class BooleanCodec implements Codec<Boolean> {
 
   private BooleanCodec() {
     // singleton
+  }
+
+  @Override
+  public Class<Boolean> getTypeClass() {
+    return Boolean.class;
   }
 
   @Override

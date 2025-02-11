@@ -17,7 +17,6 @@
 package org.apache.hadoop.ozone.freon;
 
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdds.DatanodeVersion;
@@ -43,6 +42,7 @@ import org.apache.hadoop.hdds.server.ServerUtils;
 import org.apache.hadoop.hdds.upgrade.HDDSLayoutVersionManager;
 import org.apache.hadoop.hdds.utils.HAUtils;
 import org.apache.hadoop.hdds.utils.HddsServerUtil;
+import org.apache.hadoop.hdds.utils.IOUtils;
 import org.apache.hadoop.hdds.utils.LegacyHadoopConfigurationSource;
 import org.apache.hadoop.io.retry.RetryPolicies;
 import org.apache.hadoop.io.retry.RetryPolicy;
@@ -57,6 +57,7 @@ import org.apache.hadoop.ozone.protocolPB.StorageContainerDatanodeProtocolClient
 import org.apache.hadoop.ozone.protocolPB.StorageContainerDatanodeProtocolPB;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Time;
+import org.kohsuke.MetaInfServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -119,7 +120,8 @@ import static org.apache.hadoop.hdds.utils.HddsVersionInfo.HDDS_VERSION_INFO;
     versionProvider = HddsVersionProvider.class,
     mixinStandardHelpOptions = true,
     showDefaultValues = true)
-public class DatanodeSimulator implements Callable<Void> {
+@MetaInfServices(FreonSubcommand.class)
+public class DatanodeSimulator implements Callable<Void>, FreonSubcommand {
   private static final Logger LOGGER = LoggerFactory.getLogger(
       DatanodeSimulator.class);
 
@@ -186,7 +188,7 @@ public class DatanodeSimulator implements Callable<Void> {
           } catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
-          scmClients.values().forEach(IOUtils::closeQuietly);
+          IOUtils.closeQuietly(scmClients.values());
           IOUtils.closeQuietly(reconClient);
           LOGGER.info("Successfully closed all the used resources");
           saveDatanodesToFile();
@@ -422,7 +424,7 @@ public class DatanodeSimulator implements Callable<Void> {
   }
 
   private void init() throws IOException {
-    conf = freonCommand.createOzoneConfiguration();
+    conf = freonCommand.getOzoneConf();
     Collection<InetSocketAddress> addresses = getSCMAddressForDatanodes(conf);
     scmClients = new HashMap<>(addresses.size());
     for (InetSocketAddress address : addresses) {
@@ -463,13 +465,12 @@ public class DatanodeSimulator implements Callable<Void> {
     details.setCurrentVersion(DatanodeVersion.CURRENT_VERSION);
     details.setHostName(HddsUtils.getHostName(config));
     details.setIpAddress(randomIp());
-    details.setPort(DatanodeDetails.Port.Name.STANDALONE, 0);
-    details.setPort(DatanodeDetails.Port.Name.RATIS, 0);
-    details.setPort(DatanodeDetails.Port.Name.REST, 0);
+    details.setStandalonePort(0);
+    details.setRatisPort(0);
+    details.setRestPort(0);
     details.setVersion(HDDS_VERSION_INFO.getVersion());
     details.setSetupTime(Time.now());
     details.setRevision(HDDS_VERSION_INFO.getRevision());
-    details.setBuildDate(HDDS_VERSION_INFO.getDate());
     details.setCurrentVersion(DatanodeVersion.CURRENT_VERSION);
     return details;
   }

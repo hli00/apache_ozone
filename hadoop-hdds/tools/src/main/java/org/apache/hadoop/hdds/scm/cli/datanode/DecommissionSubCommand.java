@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.hdds.scm.cli.datanode;
 
-import org.apache.hadoop.hdds.cli.GenericCli;
 import org.apache.hadoop.hdds.cli.HddsVersionProvider;
 import org.apache.hadoop.hdds.scm.DatanodeAdminError;
 import org.apache.hadoop.hdds.scm.cli.ScmSubcommand;
@@ -25,7 +24,6 @@ import org.apache.hadoop.hdds.scm.client.ScmClient;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -38,30 +36,32 @@ import java.util.List;
     versionProvider = HddsVersionProvider.class)
 public class DecommissionSubCommand extends ScmSubcommand {
 
-  @CommandLine.Spec
-  private CommandLine.Model.CommandSpec spec;
+  @CommandLine.Mixin
+  private HostNameParameters hostNameParams;
 
-  @CommandLine.Parameters(description = "List of fully qualified host names")
-  private List<String> hosts = new ArrayList<>();
+  @CommandLine.Option(names = { "--force" },
+      defaultValue = "false",
+      description = "Forcefully try to decommission the datanode(s)")
+  private boolean force;
 
   @Override
   public void execute(ScmClient scmClient) throws IOException {
-    if (hosts.size() > 0) {
-      List<DatanodeAdminError> errors = scmClient.decommissionNodes(hosts);
-      System.out.println("Started decommissioning datanode(s):\n" +
-          String.join("\n", hosts));
-      if (errors.size() > 0) {
-        for (DatanodeAdminError error : errors) {
-          System.err.println("Error: " + error.getHostname() + ": "
-              + error.getError());
-        }
-        // Throwing the exception will cause a non-zero exit status for the
-        // command.
-        throw new IOException(
-            "Some nodes could not enter the decommission workflow");
+    List<String> hosts = hostNameParams.getHostNames();
+    List<DatanodeAdminError> errors = scmClient.decommissionNodes(hosts, force);
+    System.out.println("Started decommissioning datanode(s):\n" +
+        String.join("\n", hosts));
+    showErrors(errors, "Some nodes could not enter the decommission workflow");
+  }
+
+  static void showErrors(List<DatanodeAdminError> errors, String message) throws IOException {
+    if (!errors.isEmpty()) {
+      for (DatanodeAdminError error : errors) {
+        System.err.println("Error: " + error.getHostname() + ": "
+            + error.getError());
       }
-    } else {
-      GenericCli.missingSubcommand(spec);
+      // Throwing the exception will cause a non-zero exit status for the
+      // command.
+      throw new IOException(message);
     }
   }
 }

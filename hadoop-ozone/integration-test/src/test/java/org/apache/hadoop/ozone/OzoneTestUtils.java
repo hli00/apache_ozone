@@ -34,9 +34,11 @@ import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfoGroup;
 import org.apache.ozone.test.GenericTestUtils;
 import org.apache.ozone.test.LambdaTestUtils.VoidCallable;
-
 import org.apache.ratis.util.function.CheckedConsumer;
-import org.junit.Assert;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Helper class for Tests.
@@ -92,7 +94,7 @@ public final class OzoneTestUtils {
             .updateContainerState(ContainerID.valueOf(blockID.getContainerID()),
                 HddsProtos.LifeCycleEvent.CLOSE);
       }
-      Assert.assertFalse(scm.getContainerManager()
+      assertFalse(scm.getContainerManager()
           .getContainer(ContainerID.valueOf(blockID.getContainerID()))
           .isOpen());
     }, omKeyLocationInfoGroups);
@@ -140,14 +142,10 @@ public final class OzoneTestUtils {
 
   public static <E extends Throwable> void expectOmException(
       OMException.ResultCodes code,
-      VoidCallable eval)
-      throws Exception {
-    try {
-      eval.call();
-      Assert.fail("OMException is expected");
-    } catch (OMException ex) {
-      Assert.assertEquals(code, ex.getResult());
-    }
+      VoidCallable eval) {
+
+    OMException ex = assertThrows(OMException.class, () -> eval.call(), "OMException is expected");
+    assertEquals(code, ex.getResult());
   }
 
   /**
@@ -158,9 +156,42 @@ public final class OzoneTestUtils {
       throws IOException, TimeoutException, InterruptedException {
     Pipeline pipeline = scm.getPipelineManager()
         .getPipeline(container.getPipelineID());
-    scm.getPipelineManager().closePipeline(pipeline, false);
+    scm.getPipelineManager().closePipeline(pipeline, true);
     GenericTestUtils.waitFor(() ->
             container.getState() == HddsProtos.LifeCycleState.CLOSED,
         200, 30000);
+  }
+
+  /**
+   * Flush deleted block log & wait till something was flushed.
+   */
+  public static void flushAndWaitForDeletedBlockLog(StorageContainerManager scm)
+      throws InterruptedException, TimeoutException {
+    GenericTestUtils.waitFor(() -> {
+      try {
+        scm.getScmHAManager().asSCMHADBTransactionBuffer().flush();
+        if (scm.getScmBlockManager().getDeletedBlockLog().getNumOfValidTransactions() > 0) {
+          return true;
+        }
+      } catch (IOException e) {
+      }
+      return false;
+    }, 100, 3000);
+  }
+
+  /**
+   * Wait till all blocks are removed.
+   */
+  public static void waitBlockDeleted(StorageContainerManager scm)
+      throws InterruptedException, TimeoutException {
+    GenericTestUtils.waitFor(() -> {
+      try {
+        if (scm.getScmBlockManager().getDeletedBlockLog().getNumOfValidTransactions() == 0) {
+          return true;
+        }
+      } catch (IOException e) {
+      }
+      return false;
+    }, 1000, 60000);
   }
 }

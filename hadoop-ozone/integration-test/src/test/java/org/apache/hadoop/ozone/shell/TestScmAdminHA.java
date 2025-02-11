@@ -18,55 +18,27 @@
 package org.apache.hadoop.ozone.shell;
 
 import java.net.InetSocketAddress;
-import java.util.UUID;
 
-import org.apache.hadoop.hdds.cli.OzoneAdmin;
-import org.apache.hadoop.hdds.conf.OzoneConfiguration;
-import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.apache.hadoop.ozone.admin.OzoneAdmin;
+import org.apache.ozone.test.HATests;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 
 /**
  * This class tests ozone admin scm commands.
  */
-public class TestScmAdminHA {
-  private static OzoneAdmin ozoneAdmin;
-  private static OzoneConfiguration conf;
-  private static String omServiceId;
-  private static int numOfOMs;
-  private static String clusterId;
-  private static String scmId;
-  private static MiniOzoneCluster cluster;
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+public abstract class TestScmAdminHA implements HATests.TestCase {
 
-  @BeforeClass
-  public static void init() throws Exception {
+  private OzoneAdmin ozoneAdmin;
+  private MiniOzoneCluster cluster;
+
+  @BeforeAll
+  void init() {
     ozoneAdmin = new OzoneAdmin();
-    conf = new OzoneConfiguration();
-
-    // Init HA cluster
-    omServiceId = "om-service-test1";
-    numOfOMs = 3;
-    clusterId = UUID.randomUUID().toString();
-    scmId = UUID.randomUUID().toString();
-    cluster = MiniOzoneCluster.newOMHABuilder(conf)
-        .setClusterId(clusterId)
-        .setScmId(scmId)
-        .setOMServiceId(omServiceId)
-        .setNumOfOzoneManagers(numOfOMs)
-        .build();
-    conf.setQuietMode(false);
-    // enable ratis for Scm.
-    conf.setBoolean(ScmConfigKeys.DFS_CONTAINER_RATIS_ENABLED_KEY, true);
-    cluster.waitForClusterToBeReady();
-  }
-
-  @AfterClass
-  public static void shutdown() {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+    cluster = cluster();
   }
 
   @Test

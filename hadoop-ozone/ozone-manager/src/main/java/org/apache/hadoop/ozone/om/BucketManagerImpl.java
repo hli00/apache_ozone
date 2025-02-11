@@ -43,7 +43,7 @@ import static org.apache.hadoop.ozone.om.lock.OzoneManagerLock.Resource.BUCKET_L
  * BucketManager uses MetadataDB to store bucket level information.
  * Keys used in BucketManager for storing data into MetadataDB
  * for BucketInfo:
- * {volume/bucket} -> bucketInfo
+ * {volume/bucket} -&gt; bucketInfo
  */
 public class BucketManagerImpl implements BucketManager {
   private static final Logger LOG =
@@ -154,7 +154,8 @@ public class BucketManagerImpl implements BucketManager {
             && context.getAclRights() != ACLType.READ);
 
     if (bucketNeedResolved ||
-        ozObject.getResourceType() == OzoneObj.ResourceType.KEY) {
+        ozObject.getResourceType() == OzoneObj.ResourceType.KEY ||
+        ozObject.getResourceType() == OzoneObj.ResourceType.PREFIX) {
       try {
         ResolvedBucket resolvedBucket =
             ozoneManager.resolveBucketLink(

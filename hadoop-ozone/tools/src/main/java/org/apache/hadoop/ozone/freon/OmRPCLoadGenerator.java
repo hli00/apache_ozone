@@ -19,11 +19,13 @@ package org.apache.hadoop.ozone.freon;
 
 import com.codahale.metrics.Timer;
 import com.google.common.base.Preconditions;
-import org.apache.commons.lang3.RandomUtils;
 import org.apache.hadoop.hdds.cli.HddsVersionProvider;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.om.protocolPB.OzoneManagerProtocolClientSideTranslatorPB;
 import java.util.concurrent.Callable;
+
+import org.apache.hadoop.ozone.util.PayloadUtils;
+import org.kohsuke.MetaInfServices;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -39,11 +41,10 @@ import picocli.CommandLine.Option;
         versionProvider = HddsVersionProvider.class,
         mixinStandardHelpOptions = true,
         showDefaultValues = true)
+@MetaInfServices(FreonSubcommand.class)
 public class OmRPCLoadGenerator extends BaseFreonGenerator
         implements Callable<Void> {
 
-  private static final int RPC_PAYLOAD_MULTIPLICATION_FACTOR = 1024;
-  private static final int MAX_SIZE_KB = 2097151;
   private Timer timer;
   private OzoneConfiguration configuration;
   private OzoneManagerProtocolClientSideTranslatorPB[] clients;
@@ -88,9 +89,8 @@ public class OmRPCLoadGenerator extends BaseFreonGenerator
     }
 
     init();
-    payloadReqBytes = RandomUtils.nextBytes(
-            calculateMaxPayloadSize(payloadReqSizeKB));
-    payloadRespSize = calculateMaxPayloadSize(payloadRespSizeKB);
+    payloadReqBytes = PayloadUtils.generatePayload(payloadSizeInBytes(payloadReqSizeKB));
+    payloadRespSize = payloadSizeInBytes(payloadRespSizeKB);
     timer = getMetrics().timer("rpc-payload");
     try {
       runTests(this::sendRPCReq);
@@ -104,14 +104,8 @@ public class OmRPCLoadGenerator extends BaseFreonGenerator
     return null;
   }
 
-  private int calculateMaxPayloadSize(int payloadSizeKB) {
-    if (payloadSizeKB > 0) {
-      return Math.min(
-              Math.toIntExact((long)payloadSizeKB *
-                      RPC_PAYLOAD_MULTIPLICATION_FACTOR),
-              MAX_SIZE_KB);
-    }
-    return 0;
+  private int payloadSizeInBytes(int payloadSizeKB) {
+    return payloadSizeKB > 0 ? payloadSizeKB * 1024 : 0;
   }
 
   private void sendRPCReq(long l) throws Exception {

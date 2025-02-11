@@ -22,8 +22,10 @@ package org.apache.hadoop.ozone.freon;
 import com.codahale.metrics.Timer;
 import org.apache.hadoop.hdds.cli.HddsVersionProvider;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.conf.StorageSize;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
+import org.kohsuke.MetaInfServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -44,6 +46,7 @@ import static org.apache.hadoop.ozone.freon.KeyGeneratorUtil.FILE_DIR_SEPARATOR;
         versionProvider = HddsVersionProvider.class,
         mixinStandardHelpOptions = true,
         showDefaultValues = true)
+@MetaInfServices(FreonSubcommand.class)
 public class RangeKeysGenerator extends BaseFreonGenerator
         implements Callable<Void> {
 
@@ -79,10 +82,11 @@ public class RangeKeysGenerator extends BaseFreonGenerator
   private String encodeFormat;
 
   @CommandLine.Option(names = {"-g", "--size"},
-          description = "Generated object size (in bytes) " +
-                  "to be written.",
-          defaultValue = "1")
-  private long objectSizeInBytes;
+          description = "Generated object size. " +
+              StorageSizeConverter.STORAGE_SIZE_DESCRIPTION,
+          defaultValue = "1B",
+          converter = StorageSizeConverter.class)
+  private StorageSize objectSize;
 
   @CommandLine.Option(names = {"--buffer"},
       description = "Size of buffer used to generate object content.",
@@ -113,7 +117,7 @@ public class RangeKeysGenerator extends BaseFreonGenerator
 
     ensureVolumeAndBucketExist(ozoneClients[0], volumeName, bucketName);
     contentGenerator =
-        new ContentGenerator(objectSizeInBytes, bufferSize);
+        new ContentGenerator(objectSize.toBytes(), bufferSize);
     timer = getMetrics().timer("key-read-write");
 
     kg = new KeyGeneratorUtil();
@@ -159,7 +163,7 @@ public class RangeKeysGenerator extends BaseFreonGenerator
               keyNameGeneratorfunc.apply(i);
       try (OzoneOutputStream out = client.getProxy().
                         createKey(volumeName, bucketName, keyName,
-                                objectSizeInBytes, null, new HashMap())) {
+                            objectSize.toBytes(), null, new HashMap())) {
         contentGenerator.write(out);
       }
     }

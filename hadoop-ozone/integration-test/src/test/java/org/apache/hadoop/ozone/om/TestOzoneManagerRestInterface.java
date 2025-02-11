@@ -32,49 +32,37 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Test;
 
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.Rule;
-import org.junit.rules.TestRule;
-import org.junit.rules.Timeout;
-import org.apache.ozone.test.JUnit5AwareTimeout;
+import org.apache.ozone.test.NonHATests;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.apache.hadoop.hdds.HddsUtils.getScmAddressForClients;
 import static org.apache.hadoop.ozone.OmUtils.getOmAddressForClients;
 
 /**
  * This class is to test the REST interface exposed by OzoneManager.
  */
-public class TestOzoneManagerRestInterface {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Timeout(300)
+public abstract class TestOzoneManagerRestInterface implements NonHATests.TestCase {
 
-  /**
-    * Set a timeout for each test.
-    */
-  @Rule
-  public TestRule timeout = new JUnit5AwareTimeout(Timeout.seconds(300));
+  private MiniOzoneCluster cluster;
+  private OzoneConfiguration conf;
 
-  private static MiniOzoneCluster cluster;
-  private static OzoneConfiguration conf;
-
-  @BeforeClass
-  public static void setUp() throws Exception {
-    conf = new OzoneConfiguration();
-    cluster = MiniOzoneCluster.newBuilder(conf).build();
-    cluster.waitForClusterToBeReady();
-  }
-
-  @AfterClass
-  public static void tearDown() throws Exception {
-    if (cluster != null) {
-      cluster.shutdown();
-    }
+  @BeforeAll
+  void setup() {
+    conf = cluster().getConf();
+    cluster = cluster();
   }
 
   @Test
@@ -102,19 +90,19 @@ public class TestOzoneManagerRestInterface {
         getOmAddressForClients(conf);
     ServiceInfo omInfo = serviceMap.get(HddsProtos.NodeType.OM);
 
-    Assert.assertEquals(omAddress.getHostName(), omInfo.getHostname());
-    Assert.assertEquals(omAddress.getPort(),
+    assertEquals(omAddress.getHostName(), omInfo.getHostname());
+    assertEquals(omAddress.getPort(),
         omInfo.getPort(ServicePort.Type.RPC));
-    Assert.assertEquals(server.getHttpAddress().getPort(),
+    assertEquals(server.getHttpAddress().getPort(),
         omInfo.getPort(ServicePort.Type.HTTP));
 
-    Assert.assertTrue(getScmAddressForClients(conf).iterator().hasNext());
+    assertTrue(getScmAddressForClients(conf).iterator().hasNext());
     InetSocketAddress scmAddress =
         getScmAddressForClients(conf).iterator().next();
     ServiceInfo scmInfo = serviceMap.get(HddsProtos.NodeType.SCM);
 
-    Assert.assertEquals(scmAddress.getHostName(), scmInfo.getHostname());
-    Assert.assertEquals(scmAddress.getPort(),
+    assertEquals(scmAddress.getHostName(), scmInfo.getHostname());
+    assertEquals(scmAddress.getPort(),
         scmInfo.getPort(ServicePort.Type.RPC));
   }
 

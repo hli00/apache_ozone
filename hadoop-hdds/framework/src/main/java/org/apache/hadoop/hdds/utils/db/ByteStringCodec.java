@@ -20,7 +20,7 @@ package org.apache.hadoop.hdds.utils.db;
 
 import com.google.protobuf.ByteString;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Codec to serialize/deserialize a {@link ByteString}.
@@ -33,6 +33,11 @@ public final class ByteStringCodec implements Codec<ByteString> {
   }
 
   private ByteStringCodec() { }
+
+  @Override
+  public Class<ByteString> getTypeClass() {
+    return ByteString.class;
+  }
 
   @Override
   public boolean supportCodecBuffer() {

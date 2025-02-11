@@ -18,7 +18,7 @@
  */
 package org.apache.hadoop.hdds.utils.db;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 import java.nio.ByteBuffer;
 
 /**
@@ -32,6 +32,11 @@ public final class LongCodec implements Codec<Long> {
   }
 
   private LongCodec() { }
+
+  @Override
+  public Class<Long> getTypeClass() {
+    return Long.class;
+  }
 
   @Override
   public boolean supportCodecBuffer() {

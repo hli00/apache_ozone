@@ -19,11 +19,13 @@
 package org.apache.hadoop.ozone.om.request.s3.security;
 
 import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.hadoop.ozone.om.execution.flowcontrol.ExecutionContext;
 import org.apache.hadoop.ozone.om.OMMultiTenantManager;
 import org.apache.hadoop.ozone.om.request.util.OmResponseUtil;
 import org.slf4j.Logger;
@@ -35,7 +37,6 @@ import org.apache.hadoop.ozone.audit.OMAction;
 import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.ozone.om.exceptions.OMException;
 import org.apache.hadoop.ozone.om.helpers.S3SecretValue;
-import org.apache.hadoop.ozone.om.ratis.utils.OzoneManagerDoubleBufferHelper;
 import org.apache.hadoop.ozone.om.request.OMClientRequest;
 import org.apache.hadoop.ozone.om.response.OMClientResponse;
 import org.apache.hadoop.ozone.om.response.s3.security.S3GetSecretResponse;
@@ -126,13 +127,11 @@ public class S3GetSecretRequest extends OMClientRequest {
   }
 
   @Override
-  public OMClientResponse validateAndUpdateCache(OzoneManager ozoneManager,
-      long transactionLogIndex,
-      OzoneManagerDoubleBufferHelper ozoneManagerDoubleBufferHelper) {
+  public OMClientResponse validateAndUpdateCache(OzoneManager ozoneManager, ExecutionContext context) {
     OMClientResponse omClientResponse = null;
     OMResponse.Builder omResponse = OmResponseUtil.getOMResponseBuilder(
         getOmRequest());
-    IOException exception = null;
+    Exception exception = null;
 
     final GetS3SecretRequest getS3SecretRequest =
             getOmRequest().getGetS3SecretRequest();
@@ -151,19 +150,16 @@ public class S3GetSecretRequest extends OMClientRequest {
     try {
       omClientResponse = ozoneManager.getS3SecretManager()
           .doUnderLock(accessId, s3SecretManager -> {
-            S3SecretValue assignS3SecretValue;
-            S3SecretValue s3SecretValue =
-                s3SecretManager.getSecret(accessId);
+            final S3SecretValue assignS3SecretValue;
+            S3SecretValue s3SecretValue = s3SecretManager.getSecret(accessId);
 
             if (s3SecretValue == null) {
               // Not found in S3SecretTable.
               if (createIfNotExist) {
                 // Add new entry in this case
-                assignS3SecretValue =
-                    new S3SecretValue(accessId, awsSecret.get());
+                assignS3SecretValue = S3SecretValue.of(accessId, awsSecret.get(), context.getIndex());
                 // Add cache entry first.
-                s3SecretManager.updateCache(accessId,
-                    assignS3SecretValue);
+                s3SecretManager.updateCache(accessId, assignS3SecretValue);
               } else {
                 assignS3SecretValue = null;
               }
@@ -192,6 +188,14 @@ public class S3GetSecretRequest extends OMClientRequest {
                   OMException.ResultCodes.ACCESS_ID_NOT_FOUND);
             }
 
+            if (assignS3SecretValue != null && !s3SecretManager.isBatchSupported()) {
+              // A storage that does not support batch writing is likely to be a
+              // third-party secret storage that might throw an exception on write.
+              // In the case of the exception the request will fail.
+              s3SecretManager.storeSecret(assignS3SecretValue.getKerberosID(),
+                                          assignS3SecretValue);
+            }
+
             // Compose response
             final GetS3SecretResponse.Builder getS3SecretResponse =
                 GetS3SecretResponse.newBuilder().setS3Secret(
@@ -207,21 +211,18 @@ public class S3GetSecretRequest extends OMClientRequest {
           });
 
 
-    } catch (IOException ex) {
+    } catch (IOException | InvalidPathException ex) {
       exception = ex;
       omClientResponse = new S3GetSecretResponse(null,
           ozoneManager.getS3SecretManager(),
-          createErrorOMResponse(omResponse, ex));
-    } finally {
-      addResponseToDoubleBuffer(transactionLogIndex, omClientResponse,
-          ozoneManagerDoubleBufferHelper);
+          createErrorOMResponse(omResponse, exception));
     }
 
     Map<String, String> auditMap = new HashMap<>();
     auditMap.put(OzoneConsts.S3_GETSECRET_USER, accessId);
 
     // audit log
-    auditLog(ozoneManager.getAuditLogger(), buildAuditMessage(
+    markForAudit(ozoneManager.getAuditLogger(), buildAuditMessage(
         OMAction.GET_S3_SECRET, auditMap,
         exception, getOmRequest().getUserInfo()));
 

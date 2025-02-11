@@ -139,14 +139,23 @@ public abstract class BaseHttpServer {
 
       builder.configureXFrame(xFrameEnabled).setXFrameOption(xFrameOptionValue);
 
-      httpServer = builder.build();
-      httpServer.addServlet("conf", "/conf", HddsConfServlet.class);
+      boolean addDefaultApps = shouldAddDefaultApps();
+      if (!addDefaultApps) {
+        builder.withoutDefaultApps();
+      }
 
-      httpServer.addServlet("logstream", "/logstream", LogStreamServlet.class);
-      prometheusSupport =
+      httpServer = builder.build();
+
+      // TODO move these to HttpServer2.addDefaultApps
+      if (addDefaultApps) {
+        httpServer.addServlet("conf", "/conf", HddsConfServlet.class);
+        httpServer.addServlet("logstream", "/logstream", LogStreamServlet.class);
+      }
+
+      prometheusSupport = addDefaultApps &&
           conf.getBoolean(HddsConfigKeys.HDDS_PROMETHEUS_ENABLED, true);
 
-      profilerSupport =
+      profilerSupport = addDefaultApps &&
           conf.getBoolean(HddsConfigKeys.HDDS_PROFILER_ENABLED, false);
 
       if (prometheusSupport) {
@@ -372,10 +381,12 @@ public abstract class BaseHttpServer {
         .keyPassword(getPassword(sslConf, OZONE_SERVER_HTTPS_KEYPASSWORD_KEY))
         .keyStore(sslConf.get("ssl.server.keystore.location"),
             getPassword(sslConf, OZONE_SERVER_HTTPS_KEYSTORE_PASSWORD_KEY),
-            sslConf.get("ssl.server.keystore.type", "jks"))
+            sslConf.get(HddsConfigKeys.HDDS_HTTP_SERVER_KEYSTORE_TYPE,
+                HddsConfigKeys.HDDS_HTTP_SERVER_KEYSTORE_TYPE_DEFAULT))
         .trustStore(sslConf.get("ssl.server.truststore.location"),
             getPassword(sslConf, OZONE_SERVER_HTTPS_TRUSTSTORE_PASSWORD_KEY),
-            sslConf.get("ssl.server.truststore.type", "jks"))
+            sslConf.get(HddsConfigKeys.HDDS_HTTP_SERVER_TRUSTSTORE_TYPE,
+                HddsConfigKeys.HDDS_HTTP_SERVER_TRUSTSTORE_TYPE_DEFAULT))
         .excludeCiphers(
             sslConf.get("ssl.server.exclude.cipher.list"));
   }
@@ -474,5 +485,10 @@ public abstract class BaseHttpServer {
   protected abstract String getHttpAuthType();
 
   protected abstract String getHttpAuthConfigPrefix();
+
+  /** Override to disable the default servlets. */
+  protected boolean shouldAddDefaultApps() {
+    return true;
+  }
 
 }

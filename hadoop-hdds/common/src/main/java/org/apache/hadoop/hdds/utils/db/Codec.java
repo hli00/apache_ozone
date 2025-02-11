@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hdds.utils.db;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 import java.io.IOException;
 
 /**
@@ -30,6 +30,9 @@ import java.io.IOException;
 public interface Codec<T> {
   byte[] EMPTY_BYTE_ARRAY = {};
 
+  /** @return the class of the {@link T}. */
+  Class<T> getTypeClass();
+
   /**
    * Does this {@link Codec} support the {@link CodecBuffer} methods?
    * If this method returns true, this class must implement both
@@ -40,14 +43,6 @@ public interface Codec<T> {
    */
   default boolean supportCodecBuffer() {
     return false;
-  }
-
-  /**
-   * @return an upper bound, which should be obtained without serialization,
-   *         of the serialized size of the given object.
-   */
-  default int getSerializedSizeUpperBound(T object) {
-    throw new UnsupportedOperationException();
   }
 
   /**

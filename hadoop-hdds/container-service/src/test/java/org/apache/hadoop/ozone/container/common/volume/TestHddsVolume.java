@@ -19,6 +19,8 @@ package org.apache.hadoop.ozone.container.common.volume;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Properties;
@@ -35,25 +37,26 @@ import org.apache.hadoop.hdds.fs.SpaceUsagePersistence;
 import org.apache.hadoop.hdds.fs.SpaceUsageSource;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdfs.server.datanode.checker.VolumeCheckResult;
+import org.apache.hadoop.metrics2.MetricsCollector;
+import org.apache.hadoop.metrics2.impl.MetricsCollectorImpl;
 import org.apache.hadoop.ozone.OzoneConfigKeys;
 
 import static org.apache.hadoop.hdds.fs.MockSpaceUsagePersistence.inMemory;
 import static org.apache.hadoop.hdds.fs.MockSpaceUsageSource.fixed;
 import static org.apache.hadoop.ozone.OzoneConsts.CONTAINER_DB_NAME;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.apache.hadoop.ozone.container.common.ContainerTestUtils;
 import org.apache.hadoop.ozone.container.common.helpers.DatanodeVersionFile;
 import org.apache.hadoop.ozone.container.common.utils.DatanodeStoreCache;
 import org.apache.hadoop.ozone.container.common.utils.StorageVolumeUtil;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Unit tests for {@link HddsVolume}.
@@ -65,18 +68,18 @@ public class TestHddsVolume {
   private static final OzoneConfiguration CONF = new OzoneConfiguration();
   private static final String RESERVED_SPACE = "100B";
 
-  @Rule
-  public TemporaryFolder folder = new TemporaryFolder();
+  @TempDir
+  private Path folder;
 
   private HddsVolume.Builder volumeBuilder;
   private File versionFile;
 
-  @Before
+  @BeforeEach
   public void setup() throws Exception {
-    File rootDir = new File(folder.getRoot(), HddsVolume.HDDS_VOLUME_DIR);
-    CONF.set(ScmConfigKeys.HDDS_DATANODE_DIR_DU_RESERVED, folder.getRoot() +
+    File rootDir = new File(folder.toString(), HddsVolume.HDDS_VOLUME_DIR);
+    CONF.set(ScmConfigKeys.HDDS_DATANODE_DIR_DU_RESERVED, folder.toString() +
         ":" + RESERVED_SPACE);
-    volumeBuilder = new HddsVolume.Builder(folder.getRoot().getPath())
+    volumeBuilder = new HddsVolume.Builder(folder.toString())
         .datanodeUuid(DATANODE_UUID)
         .conf(CONF)
         .usageCheckFactory(MockSpaceUsageCheckFactory.NONE);
@@ -119,8 +122,9 @@ public class TestHddsVolume {
     assertEquals(StorageType.DEFAULT, volume.getStorageType());
     assertEquals(HddsVolume.VolumeState.NOT_FORMATTED,
         volume.getStorageState());
-    assertFalse("Version file should not be created when clusterID is not " +
-        "known.", versionFile.exists());
+    assertFalse(versionFile.exists(), "Version file should not be created " +
+        "when clusterID is not " +
+        "known.");
 
 
     // Format the volume with clusterID.
@@ -128,8 +132,8 @@ public class TestHddsVolume {
 
     // The state of HddsVolume after formatting with clusterID should be
     // NORMAL and the version file should exist.
-    assertTrue("Volume format should create Version file",
-        versionFile.exists());
+    assertTrue(versionFile.exists(), "Volume format should create Version " +
+        "file");
     assertEquals(CLUSTER_ID, volume.getClusterID());
     assertEquals(HddsVolume.VolumeState.NORMAL, volume.getStorageState());
 
@@ -244,7 +248,7 @@ public class TestHddsVolume {
     HddsVolume volume = volumeBuilder.build();
 
     assertEquals(initialUsedSpace, savedUsedSpace.get());
-    assertEquals(expectedUsedSpace, volume.getUsedSpace());
+    assertEquals(expectedUsedSpace, volume.getCurrentUsage().getUsedSpace());
 
     // Shutdown the volume.
     volume.shutdown();
@@ -260,10 +264,12 @@ public class TestHddsVolume {
     StorageSize size = StorageSize.parse(RESERVED_SPACE);
     long reservedSpaceInBytes = (long) size.getUnit().toBytes(size.getValue());
 
+    SpaceUsageSource reportedUsage = volume.getCurrentUsage();
+
     assertEquals(spaceUsage.getCapacity(),
-        volume.getCapacity() + reservedSpaceInBytes);
+        reportedUsage.getCapacity() + reservedSpaceInBytes);
     assertEquals(spaceUsage.getAvailable(),
-        volume.getAvailable() + reservedSpaceInBytes);
+        reportedUsage.getAvailable() + reservedSpaceInBytes);
   }
 
   /**
@@ -296,8 +302,9 @@ public class TestHddsVolume {
 
     HddsVolume volume = volumeBuilder.build();
 
-    assertEquals(400, volume.getCapacity());
-    assertEquals(100, volume.getAvailable());
+    SpaceUsageSource usage = volume.getCurrentUsage();
+    assertEquals(400, usage.getCapacity());
+    assertEquals(100, usage.getAvailable());
 
     // Shutdown the volume.
     volume.shutdown();
@@ -323,8 +330,9 @@ public class TestHddsVolume {
 
     HddsVolume volume = volumeBuilder.build();
 
-    assertEquals(400, volume.getCapacity());
-    assertEquals(190, volume.getAvailable());
+    SpaceUsageSource usage = volume.getCurrentUsage();
+    assertEquals(400, usage.getCapacity());
+    assertEquals(190, usage.getAvailable());
 
     // Shutdown the volume.
     volume.shutdown();
@@ -349,8 +357,9 @@ public class TestHddsVolume {
 
     HddsVolume volume = volumeBuilder.build();
 
-    assertEquals(400, volume.getCapacity());
-    assertEquals(300, volume.getAvailable());
+    SpaceUsageSource usage = volume.getCurrentUsage();
+    assertEquals(400, usage.getCapacity());
+    assertEquals(300, usage.getAvailable());
 
     // Shutdown the volume.
     volume.shutdown();
@@ -375,8 +384,9 @@ public class TestHddsVolume {
 
     HddsVolume volume = volumeBuilder.build();
 
-    assertEquals(400, volume.getCapacity());
-    assertEquals(0, volume.getAvailable());
+    SpaceUsageSource usage = volume.getCurrentUsage();
+    assertEquals(400, usage.getCapacity());
+    assertEquals(0, usage.getAvailable());
 
     // Shutdown the volume.
     volume.shutdown();
@@ -502,12 +512,9 @@ public class TestHddsVolume {
     VolumeInfoMetrics volumeInfoMetrics = volume.getVolumeInfoStats();
 
     try {
-      // In case of failed volume all stats should return 0.
-      assertEquals(0, volumeInfoMetrics.getUsed());
-      assertEquals(0, volumeInfoMetrics.getAvailable());
-      assertEquals(0, volumeInfoMetrics.getCapacity());
-      assertEquals(0, volumeInfoMetrics.getReserved());
-      assertEquals(0, volumeInfoMetrics.getTotalCapacity());
+      // In case of failed volume, metrics should not throw
+      MetricsCollector collector = new MetricsCollectorImpl();
+      volumeInfoMetrics.getMetrics(collector, true);
     } finally {
       // Shutdown the volume.
       volume.shutdown();
@@ -534,7 +541,7 @@ public class TestHddsVolume {
   }
 
   private MutableVolumeSet createDbVolumeSet() throws IOException {
-    File dbVolumeDir = folder.newFolder();
+    File dbVolumeDir = Files.createDirectory(folder.resolve("NewDir")).toFile();
     CONF.set(OzoneConfigKeys.HDDS_DATANODE_CONTAINER_DB_DIR,
         dbVolumeDir.getAbsolutePath());
     MutableVolumeSet dbVolumeSet = new MutableVolumeSet(DATANODE_UUID,

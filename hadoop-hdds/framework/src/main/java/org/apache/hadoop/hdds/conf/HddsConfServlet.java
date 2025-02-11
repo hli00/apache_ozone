@@ -30,12 +30,10 @@ import java.util.Properties;
 
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
 import org.apache.hadoop.hdds.annotation.InterfaceStability;
-import org.apache.hadoop.http.HttpServer2;
+import org.apache.hadoop.hdds.server.JsonUtils;
+import org.apache.hadoop.hdds.server.http.HttpServer2;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.gson.Gson;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * A servlet to print out the running configuration data.
@@ -51,9 +49,6 @@ public class HddsConfServlet extends HttpServlet {
   private static final String COMMAND = "cmd";
   private static final OzoneConfiguration OZONE_CONFIG =
       new OzoneConfiguration();
-  private static final transient Logger LOG =
-      LoggerFactory.getLogger(HddsConfServlet.class);
-
 
   /**
    * Return the Configuration of the daemon hosting this servlet.
@@ -97,15 +92,9 @@ public class HddsConfServlet extends HttpServlet {
       throws IOException {
     try {
       if (cmd == null) {
-        if (FORMAT_XML.equals(format)) {
-          response.setContentType("text/xml; charset=utf-8");
-        } else if (FORMAT_JSON.equals(format)) {
-          response.setContentType("application/json; charset=utf-8");
-        }
-
         writeResponse(getConfFromContext(), out, format, name);
       } else {
-        processConfigTagRequest(request, out);
+        processConfigTagRequest(request, cmd, out);
       }
     } catch (BadFormatException bfe) {
       response.sendError(HttpServletResponse.SC_BAD_REQUEST, bfe.getMessage());
@@ -148,31 +137,29 @@ public class HddsConfServlet extends HttpServlet {
     }
   }
 
-  private void processConfigTagRequest(HttpServletRequest request,
+  private void processConfigTagRequest(HttpServletRequest request, String cmd,
       Writer out) throws IOException {
-    String cmd = request.getParameter(COMMAND);
-    Gson gson = new Gson();
     OzoneConfiguration config = getOzoneConfig();
 
     switch (cmd) {
     case "getOzoneTags":
-      out.write(gson.toJson(OzoneConfiguration.TAGS));
+      out.write(JsonUtils.toJsonString(OzoneConfiguration.TAGS));
       break;
     case "getPropertyByTag":
       String tags = request.getParameter("tags");
+      if (tags == null || tags.isEmpty()) {
+        throw new IllegalArgumentException("The tags parameter should be set" +
+                " when using the getPropertyByTag command.");
+      }
       Map<String, Properties> propMap = new HashMap<>();
 
       for (String tag : tags.split(",")) {
         if (config.isPropertyTag(tag)) {
           Properties properties = config.getAllPropertiesByTag(tag);
           propMap.put(tag, properties);
-        } else {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug("Not a valid tag {}", tag);
-          }
         }
       }
-      out.write(gson.toJsonTree(propMap).toString());
+      out.write(JsonUtils.toJsonString(propMap));
       break;
     default:
       throw new IllegalArgumentException(cmd + " is not a valid command.");

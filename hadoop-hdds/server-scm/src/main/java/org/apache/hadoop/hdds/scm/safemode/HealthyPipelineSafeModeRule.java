@@ -19,6 +19,7 @@ package org.apache.hadoop.hdds.scm.safemode;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.hadoop.hdds.HddsConfigKeys;
 import org.apache.hadoop.hdds.client.RatisReplicationConfig;
@@ -49,6 +50,9 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
 
   public static final Logger LOG =
       LoggerFactory.getLogger(HealthyPipelineSafeModeRule.class);
+
+  private static final String NAME = "HealthyPipelineSafeModeRule";
+
   private int healthyPipelineThresholdCount;
   private int currentHealthyPipelineCount = 0;
   private final double healthyPipelinesPercent;
@@ -56,11 +60,12 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
   private final PipelineManager pipelineManager;
   private final int minHealthyPipelines;
   private final SCMContext scmContext;
+  private final Set<PipelineID> unProcessedPipelineSet = new HashSet<>();
 
-  HealthyPipelineSafeModeRule(String ruleName, EventQueue eventQueue,
+  HealthyPipelineSafeModeRule(EventQueue eventQueue,
       PipelineManager pipelineManager, SCMSafeModeManager manager,
       ConfigurationSource configuration, SCMContext scmContext) {
-    super(manager, ruleName, eventQueue);
+    super(manager, NAME, eventQueue);
     this.pipelineManager = pipelineManager;
     this.scmContext = scmContext;
     healthyPipelinesPercent =
@@ -131,6 +136,7 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
       getSafeModeMetrics().incCurrentHealthyPipelinesCount();
       currentHealthyPipelineCount++;
       processedPipelineIDs.add(pipeline.getId());
+      unProcessedPipelineSet.remove(pipeline.getId());
     }
 
     if (scmInSafeMode()) {
@@ -154,9 +160,13 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
   }
 
   private synchronized void initializeRule(boolean refresh) {
-    int pipelineCount = pipelineManager.getPipelines(
-        RatisReplicationConfig.getInstance(HddsProtos.ReplicationFactor.THREE),
-        Pipeline.PipelineState.OPEN).size();
+    unProcessedPipelineSet.addAll(pipelineManager.getPipelines(
+            RatisReplicationConfig.getInstance(
+                HddsProtos.ReplicationFactor.THREE),
+            Pipeline.PipelineState.OPEN).stream().map(Pipeline::getId)
+        .collect(Collectors.toSet()));
+
+    int pipelineCount = unProcessedPipelineSet.size();
 
     healthyPipelineThresholdCount = Math.max(minHealthyPipelines,
         (int) Math.ceil(healthyPipelinesPercent * pipelineCount));
@@ -179,6 +189,7 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
   @Override
   protected synchronized void cleanup() {
     processedPipelineIDs.clear();
+    unProcessedPipelineSet.clear();
   }
 
   @VisibleForTesting
@@ -193,9 +204,25 @@ public class HealthyPipelineSafeModeRule extends SafeModeExitRule<Pipeline> {
 
   @Override
   public String getStatusText() {
-    return String.format("healthy Ratis/THREE pipelines (=%d) >= "
-            + "healthyPipelineThresholdCount (=%d)",
-        getCurrentHealthyPipelineCount(),
+    String status = String.format(
+        "healthy Ratis/THREE pipelines (=%d) >= healthyPipelineThresholdCount" +
+            " (=%d)", getCurrentHealthyPipelineCount(),
         getHealthyPipelineThresholdCount());
+    status = updateStatusTextWithSamplePipelines(status);
+    return status;
+  }
+
+  private synchronized String updateStatusTextWithSamplePipelines(
+      String status) {
+    Set<PipelineID> samplePipelines =
+        unProcessedPipelineSet.stream().limit(SAMPLE_PIPELINE_DISPLAY_LIMIT)
+            .collect(Collectors.toSet());
+
+    if (!samplePipelines.isEmpty()) {
+      String samplePipelineText =
+          "Sample pipelines not satisfying the criteria : " + samplePipelines;
+      status = status.concat("\n").concat(samplePipelineText);
+    }
+    return status;
   }
 }

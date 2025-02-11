@@ -32,6 +32,8 @@ import org.apache.hadoop.hdds.protocol.proto
 import org.apache.hadoop.hdds.protocol.proto
     .StorageContainerDatanodeProtocolProtos.DeletedBlocksTransaction;
 import org.apache.hadoop.hdds.utils.db.Table;
+import org.apache.hadoop.metrics2.lib.MetricsRegistry;
+import org.apache.hadoop.metrics2.lib.MutableRate;
 import org.apache.hadoop.ozone.container.common.helpers.BlockData;
 import org.apache.hadoop.ozone.container.common.helpers.BlockDeletingServiceMetrics;
 import org.apache.hadoop.ozone.container.common.helpers.ChunkInfoList;
@@ -69,6 +71,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -90,7 +93,6 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
   private final ContainerSet containerSet;
   private final ConfigurationSource conf;
   private int invocationCount;
-  private long totalTime;
   private final ThreadPoolExecutor executor;
   private final LinkedBlockingQueue<DeleteCmdInfo> deleteCommandQueues;
   private final Daemon handlerThread;
@@ -98,9 +100,11 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
   private final BlockDeletingServiceMetrics blockDeleteMetrics;
   private final long tryLockTimeoutMs;
   private final Map<String, SchemaHandler> schemaHandlers;
+  private final MutableRate opsLatencyMs;
 
   public DeleteBlocksCommandHandler(OzoneContainer container,
-      ConfigurationSource conf, DatanodeConfiguration dnConf) {
+      ConfigurationSource conf, DatanodeConfiguration dnConf,
+      String threadNamePrefix) {
     this.ozoneContainer = container;
     this.containerSet = container.getContainerSet();
     this.conf = conf;
@@ -111,12 +115,19 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
     schemaHandlers.put(SCHEMA_V2, this::markBlocksForDeletionSchemaV2);
     schemaHandlers.put(SCHEMA_V3, this::markBlocksForDeletionSchemaV3);
 
+    ThreadFactory threadFactory = new ThreadFactoryBuilder()
+        .setNameFormat(threadNamePrefix +
+            "DeleteBlocksCommandHandlerThread-%d")
+        .build();
     this.executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(
-        dnConf.getBlockDeleteThreads(), new ThreadFactoryBuilder()
-            .setNameFormat("DeleteBlocksCommandHandlerThread-%d").build());
+        dnConf.getBlockDeleteThreads(), threadFactory);
     this.deleteCommandQueues =
         new LinkedBlockingQueue<>(dnConf.getBlockDeleteQueueLimit());
-    handlerThread = new Daemon(new DeleteCmdWorker());
+    MetricsRegistry registry = new MetricsRegistry(
+        DeleteBlocksCommandHandler.class.getSimpleName());
+    this.opsLatencyMs = registry.newRate(SCMCommandProto.Type.deleteBlocksCommand + "Ms");
+    long interval = dnConf.getBlockDeleteCommandWorkerInterval().toMillis();
+    handlerThread = new Daemon(new DeleteCmdWorker(interval));
     handlerThread.start();
   }
 
@@ -129,12 +140,22 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
           SCMCommandProto.Type.deleteBlocksCommand, command.getType());
       return;
     }
-
+    DeleteCmdInfo cmd = new DeleteCmdInfo((DeleteBlocksCommand) command,
+        container, context, connectionManager);
     try {
-      DeleteCmdInfo cmd = new DeleteCmdInfo((DeleteBlocksCommand) command,
-          container, context, connectionManager);
       deleteCommandQueues.add(cmd);
     } catch (IllegalStateException e) {
+      String dnId = context.getParent().getDatanodeDetails().getUuidString();
+      Consumer<CommandStatus> updateFailure = (cmdStatus) -> {
+        cmdStatus.markAsFailed();
+        ContainerBlocksDeletionACKProto emptyACK =
+            ContainerBlocksDeletionACKProto
+                .newBuilder()
+                .setDnId(dnId)
+                .build();
+        ((DeleteBlockCommandStatus)cmdStatus).setBlocksDeletionAck(emptyACK);
+      };
+      updateCommandStatus(cmd.getContext(), cmd.getCmd(), updateFailure, LOG);
       LOG.warn("Command is discarded because of the command queue is full");
     }
   }
@@ -152,12 +173,12 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
 
   @Override
   public int getThreadPoolMaxPoolSize() {
-    return ((ThreadPoolExecutor)executor).getMaximumPoolSize();
+    return executor.getMaximumPoolSize();
   }
 
   @Override
   public int getThreadPoolActivePoolSize() {
-    return ((ThreadPoolExecutor)executor).getActiveCount();
+    return executor.getActiveCount();
   }
 
   /**
@@ -216,6 +237,17 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
    */
   public final class DeleteCmdWorker implements Runnable {
 
+    private long intervalInMs;
+
+    public DeleteCmdWorker(long interval) {
+      this.intervalInMs = interval;
+    }
+
+    @VisibleForTesting
+    public long getInterval() {
+      return this.intervalInMs;
+    }
+
     @Override
     public void run() {
       while (true) {
@@ -229,7 +261,7 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
         }
 
         try {
-          Thread.sleep(2000);
+          Thread.sleep(this.intervalInMs);
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           break;
@@ -326,11 +358,16 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
 
       DeletedContainerBlocksSummary summary =
           DeletedContainerBlocksSummary.getFrom(containerBlocks);
-      LOG.info("Start to delete container blocks, TXIDs={}, "
-              + "numOfContainers={}, numOfBlocks={}",
-          summary.getTxIDSummary(),
+      LOG.info("Summary of deleting container blocks, numOfTransactions={}, "
+              + "numOfContainers={}, numOfBlocks={}, commandId={}.",
+          summary.getNumOfTxs(),
           summary.getNumOfContainers(),
-          summary.getNumOfBlocks());
+          summary.getNumOfBlocks(),
+          cmd.getCmd().getId());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Start to delete container blocks, TXIDs={}",
+            summary.getTxIDSummary());
+      }
       blockDeleteMetrics.incrReceivedContainerCount(
           summary.getNumOfContainers());
       blockDeleteMetrics.incrReceivedRetryTransactionCount(
@@ -353,7 +390,14 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
           LOG.debug("Sending following block deletion ACK to SCM");
           for (DeleteBlockTransactionResult result : blockDeletionACK
               .getResultsList()) {
-            LOG.debug("{} : {}", result.getTxID(), result.getSuccess());
+            boolean success = result.getSuccess();
+            LOG.debug("TxId = {} : ContainerId = {} : {}",
+                result.getTxID(), result.getContainerID(), success);
+            if (success) {
+              blockDeleteMetrics.incrProcessedTransactionSuccessCount(1);
+            } else {
+              blockDeleteMetrics.incrProcessedTransactionFailCount(1);
+            }
           }
         }
       }
@@ -361,14 +405,18 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
     } finally {
       final ContainerBlocksDeletionACKProto deleteAck =
           blockDeletionACK;
-      final boolean status = cmdExecuted;
+      final boolean executedStatus = cmdExecuted;
       Consumer<CommandStatus> statusUpdater = (cmdStatus) -> {
-        cmdStatus.setStatus(status);
+        if (executedStatus) {
+          cmdStatus.markAsExecuted();
+        } else {
+          cmdStatus.markAsFailed();
+        }
         ((DeleteBlockCommandStatus)cmdStatus).setBlocksDeletionAck(deleteAck);
       };
       updateCommandStatus(cmd.getContext(), cmd.getCmd(), statusUpdater, LOG);
       long endTime = Time.monotonicNow();
-      totalTime += endTime - startTime;
+      this.opsLatencyMs.add(endTime - startTime);
       invocationCount++;
     }
   }
@@ -479,7 +527,9 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
       throws IOException {
     int newDeletionBlocks = 0;
     long containerId = delTX.getContainerID();
-    logDeleteTransaction(containerId, containerData, delTX);
+    if (isDuplicateTransaction(containerId, containerData, delTX, blockDeleteMetrics)) {
+      return;
+    }
     try (DBHandle containerDB = BlockUtils.getDB(containerData, conf)) {
       DeleteTransactionStore<?> store =
           (DeleteTransactionStore<?>) containerDB.getStore();
@@ -501,7 +551,9 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
       KeyValueContainerData containerData, DeletedBlocksTransaction delTX)
       throws IOException {
     long containerId = delTX.getContainerID();
-    logDeleteTransaction(containerId, containerData, delTX);
+    if (isDuplicateTransaction(containerId, containerData, delTX, blockDeleteMetrics)) {
+      return;
+    }
     int newDeletionBlocks = 0;
     try (DBHandle containerDB = BlockUtils.getDB(containerData, conf)) {
       Table<String, BlockData> blockDataTable =
@@ -591,20 +643,28 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
     }
   }
 
-  private void logDeleteTransaction(long containerId,
-      KeyValueContainerData containerData, DeletedBlocksTransaction delTX) {
-    if (LOG.isDebugEnabled()) {
-      LOG.debug("Processing Container : {}, DB path : {}, transaction {}",
-          containerId, containerData.getMetadataPath(), delTX.getTxID());
-    }
+  public static boolean isDuplicateTransaction(long containerId, KeyValueContainerData containerData,
+      DeletedBlocksTransaction delTX, BlockDeletingServiceMetrics metrics) {
+    boolean duplicate = false;
 
-    if (delTX.getTxID() <= containerData.getDeleteTransactionId()) {
-      blockDeleteMetrics.incOutOfOrderDeleteBlockTransactionCount();
+    if (delTX.getTxID() < containerData.getDeleteTransactionId()) {
+      if (metrics != null) {
+        metrics.incOutOfOrderDeleteBlockTransactionCount();
+      }
       LOG.info(String.format("Delete blocks for containerId: %d"
-              + " is either received out of order or retried,"
-              + " %d <= %d", containerId, delTX.getTxID(),
+              + " is received out of order, %d < %d", containerId, delTX.getTxID(),
           containerData.getDeleteTransactionId()));
+    } else if (delTX.getTxID() == containerData.getDeleteTransactionId()) {
+      duplicate = true;
+      LOG.info(String.format("Delete blocks with txID %d for containerId: %d"
+              + " is retried.", delTX.getTxID(), containerId));
+    } else {
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Processing Container : {}, DB path : {}, transaction {}",
+            containerId, containerData.getMetadataPath(), delTX.getTxID());
+      }
     }
+    return duplicate;
   }
 
   @Override
@@ -619,15 +679,12 @@ public class DeleteBlocksCommandHandler implements CommandHandler {
 
   @Override
   public long getAverageRunTime() {
-    if (invocationCount > 0) {
-      return totalTime / invocationCount;
-    }
-    return 0;
+    return (long) this.opsLatencyMs.lastStat().mean();
   }
 
   @Override
   public long getTotalRunTime() {
-    return totalTime;
+    return (long) this.opsLatencyMs.lastStat().total();
   }
 
   @Override

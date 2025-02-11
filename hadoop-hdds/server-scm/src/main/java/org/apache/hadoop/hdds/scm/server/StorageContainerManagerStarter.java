@@ -21,11 +21,11 @@
  */
 package org.apache.hadoop.hdds.scm.server;
 
-import org.apache.hadoop.hdds.StringUtils;
 import org.apache.hadoop.hdds.cli.GenericCli;
 import org.apache.hadoop.hdds.cli.HddsVersionProvider;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.tracing.TracingUtil;
+import org.apache.hadoop.hdds.utils.HddsServerUtil;
 import org.apache.hadoop.hdds.utils.HddsVersionInfo;
 import org.apache.hadoop.ozone.common.StorageInfo;
 import org.apache.hadoop.ozone.util.OzoneNetUtils;
@@ -37,6 +37,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
 import java.io.IOException;
+import java.util.concurrent.Callable;
 
 import static org.apache.hadoop.ozone.conf.OzoneServiceConfig.DEFAULT_SHUTDOWN_HOOK_PRIORITY;
 
@@ -49,7 +50,7 @@ import static org.apache.hadoop.ozone.conf.OzoneServiceConfig.DEFAULT_SHUTDOWN_H
     hidden = true, description = "Start or initialize the scm server.",
     versionProvider = HddsVersionProvider.class,
     mixinStandardHelpOptions = true)
-public class StorageContainerManagerStarter extends GenericCli {
+public class StorageContainerManagerStarter extends GenericCli implements Callable<Void> {
 
   private OzoneConfiguration conf;
   private SCMStarterInterface receiver;
@@ -91,8 +92,8 @@ public class StorageContainerManagerStarter extends GenericCli {
       versionProvider = HddsVersionProvider.class)
   public void generateClusterId() {
     commonInit();
-    System.out.println("Generating new cluster id:");
-    System.out.println(receiver.generateClusterId());
+    out().println("Generating new cluster id:");
+    out().println(receiver.generateClusterId());
   }
 
   /**
@@ -150,12 +151,12 @@ public class StorageContainerManagerStarter extends GenericCli {
    * is set and print the startup banner message.
    */
   private void commonInit() {
-    conf = createOzoneConfiguration();
+    conf = getOzoneConf();
     TracingUtil.initTracing("StorageContainerManager", conf);
 
     String[] originalArgs = getCmd().getParseResult().originalArgs()
         .toArray(new String[0]);
-    StringUtils.startupShutdownMessage(HddsVersionInfo.HDDS_VERSION_INFO,
+    HddsServerUtil.startupShutdownMessage(HddsVersionInfo.HDDS_VERSION_INFO,
         StorageContainerManager.class, originalArgs, LOG, conf);
   }
 

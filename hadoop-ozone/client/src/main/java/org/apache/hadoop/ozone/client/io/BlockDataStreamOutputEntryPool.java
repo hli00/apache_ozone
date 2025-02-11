@@ -19,6 +19,7 @@
 package org.apache.hadoop.ozone.client.io;
 
 import com.google.common.base.Preconditions;
+import org.apache.hadoop.hdds.client.ContainerBlockID;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.scm.OzoneClientConfig;
 import org.apache.hadoop.hdds.scm.XceiverClientFactory;
@@ -35,15 +36,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.Map;
 
 /**
  * This class manages the stream entries list and handles block allocation
  * from OzoneManager.
  */
-public class BlockDataStreamOutputEntryPool {
+public class BlockDataStreamOutputEntryPool implements KeyMetadataAware {
 
   public static final Logger LOG =
       LoggerFactory.getLogger(BlockDataStreamOutputEntryPool.class);
@@ -59,6 +63,7 @@ public class BlockDataStreamOutputEntryPool {
   private final long openID;
   private final ExcludeList excludeList;
   private List<StreamBuffer> bufferList;
+  private ContainerBlockID lastUpdatedBlockId = new ContainerBlockID(-1, -1);
 
   @SuppressWarnings({"parameternumber", "squid:S00107"})
   public BlockDataStreamOutputEntryPool(
@@ -79,10 +84,11 @@ public class BlockDataStreamOutputEntryPool {
         .setBucketName(info.getBucketName()).setKeyName(info.getKeyName())
         .setReplicationConfig(replicationConfig).setDataSize(info.getDataSize())
         .setIsMultipartKey(isMultipart).setMultipartUploadID(uploadID)
-        .setMultipartUploadPartNumber(partNumber).build();
+        .setMultipartUploadPartNumber(partNumber)
+        .setSortDatanodesInPipeline(true).build();
     this.requestID = requestId;
     this.openID = openID;
-    this.excludeList = new ExcludeList();
+    this.excludeList = createExcludeList();
     this.bufferList = new ArrayList<>();
   }
 
@@ -146,6 +152,33 @@ public class BlockDataStreamOutputEntryPool {
       }
     }
     return locationInfoList;
+  }
+
+  void hsyncKey(long offset) throws IOException {
+    if (keyArgs != null) {
+      // in test, this could be null
+      keyArgs.setDataSize(offset);
+      keyArgs.setLocationInfoList(getLocationInfoList());
+      // When the key is multipart upload part file upload, we should not
+      // commit the key, as this is not an actual key, this is a just a
+      // partial key of a large file.
+      if (keyArgs.getIsMultipartKey()) {
+        throw new IOException("Hsync is unsupported for multipart keys.");
+      } else {
+        if (keyArgs.getLocationInfoList().size() == 0) {
+          omClient.hsyncKey(keyArgs, openID);
+        } else {
+          ContainerBlockID lastBLockId = keyArgs.getLocationInfoList().get(keyArgs.getLocationInfoList().size() - 1)
+              .getBlockID().getContainerBlockID();
+          if (!lastUpdatedBlockId.equals(lastBLockId)) {
+            omClient.hsyncKey(keyArgs, openID);
+            lastUpdatedBlockId = lastBLockId;
+          }
+        }
+      }
+    } else {
+      LOG.warn("Closing KeyOutputStream, but key args is null");
+    }
   }
 
   /**
@@ -286,5 +319,23 @@ public class BlockDataStreamOutputEntryPool {
       totalDataLen += b.position();
     }
     return totalDataLen;
+  }
+
+  OzoneClientConfig getConfig() {
+    return config;
+  }
+
+  ExcludeList createExcludeList() {
+    return new ExcludeList(getConfig().getExcludeNodesExpiryTime(),
+        Clock.system(ZoneOffset.UTC));
+  }
+
+  public long getDataSize() {
+    return keyArgs.getDataSize();
+  }
+
+  @Override
+  public Map<String, String> getMetadata() {
+    return this.keyArgs.getMetadata();
   }
 }

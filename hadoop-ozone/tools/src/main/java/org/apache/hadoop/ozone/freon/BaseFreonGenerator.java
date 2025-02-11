@@ -73,8 +73,9 @@ import picocli.CommandLine.ParentCommand;
 /**
  * Base class for simplified performance tests.
  */
+@CommandLine.Command
 @SuppressWarnings("java:S2245") // no need for secure random
-public class BaseFreonGenerator {
+public class BaseFreonGenerator implements FreonSubcommand {
 
   private static final Logger LOG =
       LoggerFactory.getLogger(BaseFreonGenerator.class);
@@ -265,7 +266,7 @@ public class BaseFreonGenerator {
    */
   private void reportAnyFailure() {
     if (failureCounter.get() > 0) {
-      throw new RuntimeException("One ore more freon test is failed.");
+      throw new RuntimeException("One or more freon test is failed.");
     }
   }
 
@@ -285,10 +286,14 @@ public class BaseFreonGenerator {
     attemptCounter = new AtomicLong(0);
 
     if (prefix.length() == 0) {
-      prefix = RandomStringUtils.randomAlphanumeric(10).toLowerCase();
+      prefix = !allowEmptyPrefix() ? RandomStringUtils.randomAlphanumeric(10).toLowerCase() : "";
     } else {
       //replace environment variables to support multi-node execution
       prefix = resolvePrefix(prefix);
+    }
+    if (duration != null && !allowDuration()) {
+      LOG.warn("--duration is ignored");
+      duration = null;
     }
     if (duration != null) {
       durationInSecond = TimeDurationUtil.getTimeDurationHelper(
@@ -306,8 +311,8 @@ public class BaseFreonGenerator {
               "Invalid command, "
                       + "the testNo must be a positive integer");
     }
-    LOG.info("Executing test with prefix {} " +
-        "and number-of-tests {}", prefix, testNo);
+    LOG.info("Executing test with prefix {} and number-of-tests {}",
+        prefix.isEmpty() ? "''" : prefix, testNo);
 
     pathSchema = new PathSchema(prefix);
 
@@ -541,8 +546,26 @@ public class BaseFreonGenerator {
     return dig.digest(stream);
   }
 
+  /**
+   * When no prefix is specified,
+   * if allowEmptyPrefix is false, a random prefix will be used;
+   * if allowEmptyPrefix is true, an empty prefix will be used.
+   */
+  public boolean allowEmptyPrefix() {
+    return false;
+  }
+
   public String getPrefix() {
     return prefix;
+  }
+
+  /**
+   * Whether to enable Duration.
+   * If enabled, the command will load the --duration option.
+   * If not enabled, the command will not load the --duration option.
+   */
+  public boolean allowDuration() {
+    return true;
   }
 
   public MetricRegistry getMetrics() {
@@ -550,7 +573,7 @@ public class BaseFreonGenerator {
   }
 
   public OzoneConfiguration createOzoneConfiguration() {
-    return freonCommand.createOzoneConfiguration();
+    return freonCommand.getOzoneConf();
   }
 
   /**

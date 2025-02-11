@@ -83,9 +83,8 @@ public class ReconDeadNodeHandler extends DeadNodeHandler {
         LOG.warn("Node {} has reached DEAD state, but SCM does not have " +
             "information about it.", datanodeDetails);
       }
-      containerHealthTask.triggerContainerHealthCheck();
-      pipelineSyncTask.triggerPipelineSyncTask();
-      containerSizeCountTask.process(containerManager.getContainers());
+      containerHealthTask.initializeAndRunTask();
+      pipelineSyncTask.initializeAndRunTask();
     } catch (Exception ioEx) {
       LOG.error("Error trying to verify Node operational state from SCM.",
           ioEx);

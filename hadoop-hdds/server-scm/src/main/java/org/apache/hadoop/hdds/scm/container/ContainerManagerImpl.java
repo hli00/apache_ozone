@@ -37,6 +37,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdds.client.ECReplicationConfig;
 import org.apache.hadoop.hdds.client.ReplicationConfig;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationType;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ContainerInfoProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.LifeCycleState;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.LifeCycleEvent;
@@ -86,6 +87,8 @@ public class ContainerManagerImpl implements ContainerManager {
   @SuppressWarnings("java:S2245") // no need for secure random
   private final Random random = new Random();
 
+  private int maxCountOfContainerList;
+
   /**
    *
    */
@@ -115,6 +118,10 @@ public class ContainerManagerImpl implements ContainerManager {
         .getInt(ScmConfigKeys.OZONE_SCM_PIPELINE_OWNER_CONTAINER_COUNT,
             ScmConfigKeys.OZONE_SCM_PIPELINE_OWNER_CONTAINER_COUNT_DEFAULT);
 
+    this.maxCountOfContainerList = conf
+        .getInt(ScmConfigKeys.OZONE_SCM_CONTAINER_LIST_MAX_COUNT,
+            ScmConfigKeys.OZONE_SCM_CONTAINER_LIST_MAX_COUNT_DEFAULT);
+
     this.scmContainerManagerMetrics = SCMContainerManagerMetrics.create();
   }
 
@@ -137,7 +144,14 @@ public class ContainerManagerImpl implements ContainerManager {
       throws ContainerNotFoundException {
     return Optional.ofNullable(containerStateManager
         .getContainer(id))
-        .orElseThrow(() -> new ContainerNotFoundException("ID " + id));
+        .orElseThrow(() -> new ContainerNotFoundException("Container with id " +
+            id + " not found."));
+  }
+
+
+  @Override
+  public List<ContainerInfo> getContainers(ReplicationType type) {
+    return toContainers(containerStateManager.getContainerIDs(type));
   }
 
   @Override
@@ -283,11 +297,27 @@ public class ContainerManagerImpl implements ContainerManager {
   }
 
   @Override
+  public void transitionDeletingToClosedState(ContainerID containerID) throws IOException {
+    HddsProtos.ContainerID proto = containerID.getProtobuf();
+    lock.lock();
+    try {
+      if (containerExist(containerID)) {
+        containerStateManager.transitionDeletingToClosedState(proto);
+      } else {
+        throwContainerNotFoundException(containerID);
+      }
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  @Override
   public Set<ContainerReplica> getContainerReplicas(final ContainerID id)
       throws ContainerNotFoundException {
     return Optional.ofNullable(containerStateManager
         .getContainerReplicas(id))
-        .orElseThrow(() -> new ContainerNotFoundException("ID " + id));
+        .orElseThrow(() -> new ContainerNotFoundException("Container with id " +
+            id + " not found."));
   }
 
   @Override

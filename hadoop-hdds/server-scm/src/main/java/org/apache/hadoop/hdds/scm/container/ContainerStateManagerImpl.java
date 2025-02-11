@@ -34,11 +34,13 @@ import com.google.common.util.concurrent.Striped;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.StorageUnit;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
+import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ReplicationType;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.ContainerInfoProto;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.LifeCycleEvent;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos.LifeCycleState;
 import org.apache.hadoop.hdds.protocol.proto.SCMRatisProtocol.RequestType;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
+import org.apache.hadoop.hdds.scm.container.common.helpers.InvalidContainerStateException;
 import org.apache.hadoop.hdds.scm.container.replication.ContainerReplicaPendingOps;
 import org.apache.hadoop.hdds.scm.container.states.ContainerState;
 import org.apache.hadoop.hdds.scm.container.states.ContainerStateMap;
@@ -251,16 +253,12 @@ public final class ContainerStateManagerImpl
             pipelineManager.addContainerToPipelineSCMStart(
                 container.getPipelineID(), container.containerID());
           } catch (PipelineNotFoundException ex) {
+            // We are ignoring this here. The container will be moved to
+            // CLOSING state by ReplicationManager's OpenContainerHandler
+            // For more info: HDDS-10231
             LOG.warn("Found container {} which is in OPEN state with " +
-                "pipeline {} that does not exist. Marking container for " +
-                "closing.", container, container.getPipelineID());
-            try {
-              updateContainerState(container.containerID().getProtobuf(),
-                  LifeCycleEvent.FINALIZE);
-            } catch (InvalidStateTransitionException e) {
-              // This cannot happen.
-              LOG.warn("Unable to finalize Container {}.", container);
-            }
+                "pipeline {} that does not exist.",
+                container, container.getPipelineID());
           }
         }
       }
@@ -287,6 +285,13 @@ public final class ContainerStateManagerImpl
   public Set<ContainerID> getContainerIDs(final LifeCycleState state) {
     try (AutoCloseableLock ignored = readLock()) {
       return containers.getContainerIDsByState(state);
+    }
+  }
+
+  @Override
+  public Set<ContainerID> getContainerIDs(final ReplicationType type) {
+    try (AutoCloseableLock ignored = readLock()) {
+      return containers.getContainerIDsByType(type);
     }
   }
 
@@ -371,6 +376,28 @@ public final class ContainerStateManagerImpl
     }
   }
 
+  @Override
+  public void transitionDeletingToClosedState(HddsProtos.ContainerID containerID) throws IOException {
+    final ContainerID id = ContainerID.getFromProtobuf(containerID);
+
+    try (AutoCloseableLock ignored = writeLock(id)) {
+      if (containers.contains(id)) {
+        final ContainerInfo oldInfo = containers.getContainerInfo(id);
+        final LifeCycleState oldState = oldInfo.getState();
+        if (oldState != DELETING) {
+          throw new InvalidContainerStateException("Cannot transition container " + id + " from " + oldState +
+              " back to CLOSED. The container must be in the DELETING state.");
+        }
+        ExecutionUtil.create(() -> {
+          containers.updateState(id, oldState, CLOSED);
+          transactionBuffer.addToBuffer(containerStore, id, containers.getContainerInfo(id));
+        }).onException(() -> {
+          transactionBuffer.addToBuffer(containerStore, id, oldInfo);
+          containers.updateState(id, CLOSED, oldState);
+        }).execute();
+      }
+    }
+  }
 
   @Override
   public Set<ContainerReplica> getContainerReplicas(final ContainerID id) {

@@ -17,134 +17,85 @@
 
 package org.apache.hadoop.ozone.client.rpc;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.StorageUnit;
 import org.apache.hadoop.hdds.client.ReplicationType;
-import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.protocol.DatanodeDetails;
-import org.apache.hadoop.hdds.protocol.datanode.proto.ContainerProtos.ChecksumType;
-import org.apache.hadoop.hdds.scm.OzoneClientConfig;
-import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdds.scm.container.ContainerID;
 import org.apache.hadoop.hdds.scm.container.ContainerInfo;
 import org.apache.hadoop.hdds.scm.pipeline.Pipeline;
 import org.apache.hadoop.hdds.utils.IOUtils;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
-import org.apache.hadoop.ozone.OzoneConfigKeys;
-import org.apache.hadoop.ozone.OzoneConsts;
 import org.apache.hadoop.ozone.client.ObjectStore;
 import org.apache.hadoop.ozone.client.OzoneClient;
-import org.apache.hadoop.ozone.client.OzoneClientFactory;
 import org.apache.hadoop.ozone.client.io.BlockOutputStreamEntry;
 import org.apache.hadoop.ozone.client.io.KeyOutputStream;
 import org.apache.hadoop.ozone.client.io.OzoneOutputStream;
 import org.apache.hadoop.ozone.container.ContainerTestHelper;
-import org.apache.hadoop.ozone.container.TestHelper;
 import org.apache.hadoop.ozone.om.helpers.OmKeyLocationInfo;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_STALENODE_INTERVAL;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TestRule;
-import org.junit.rules.Timeout;
-import org.apache.ozone.test.JUnit5AwareTimeout;
+import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_SCM_BLOCK_SIZE;
+import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_SCM_BLOCK_SIZE_DEFAULT;
+import static org.apache.hadoop.ozone.container.TestHelper.createKey;
+import static org.apache.hadoop.ozone.container.TestHelper.waitForContainerClose;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+import org.apache.ozone.test.NonHATests;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.Timeout;
 
 /**
- * Tests Close Container Exception handling by Ozone Client.
+ * Tests that unused block pre-allocated for write is discarded when container is closed.
  */
-public class TestDiscardPreallocatedBlocks {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Timeout(300)
+public abstract class TestDiscardPreallocatedBlocks implements NonHATests.TestCase {
+  private MiniOzoneCluster cluster;
+  private OzoneClient client;
+  private ObjectStore objectStore;
+  private int blockSize;
+  private String volumeName;
+  private String bucketName;
+  private String keyString;
 
-  /**
-   * Set a timeout for each test.
-   */
+  @BeforeAll
+  void init() throws Exception {
+    blockSize = (int) cluster().getConf().getStorageSize(OZONE_SCM_BLOCK_SIZE,
+        OZONE_SCM_BLOCK_SIZE_DEFAULT, StorageUnit.BYTES);
 
-  @Rule
-  public TestRule timeout = new JUnit5AwareTimeout(Timeout.seconds(300));
-  private static MiniOzoneCluster cluster;
-  private static OzoneConfiguration conf = new OzoneConfiguration();
-  private static OzoneClient client;
-  private static ObjectStore objectStore;
-  private static int chunkSize;
-  private static int blockSize;
-  private static String volumeName;
-  private static String bucketName;
-  private static String keyString;
-
-  /**
-   * Create a MiniDFSCluster for testing.
-   * <p>
-   * Ozone is made active by setting OZONE_ENABLED = true
-   *
-   * @throws IOException
-   */
-
-  @BeforeClass
-  public static void init() throws Exception {
-    chunkSize = (int) OzoneConsts.MB;
-    blockSize = 4 * chunkSize;
-
-    OzoneClientConfig config = new OzoneClientConfig();
-    config.setChecksumType(ChecksumType.NONE);
-    conf.setFromObject(config);
-
-    conf.setTimeDuration(OZONE_SCM_STALENODE_INTERVAL, 3, TimeUnit.SECONDS);
-    conf.setQuietMode(false);
-    conf.setStorageSize(OzoneConfigKeys.OZONE_SCM_BLOCK_SIZE, 4,
-        StorageUnit.MB);
-    conf.setInt(ScmConfigKeys.OZONE_DATANODE_PIPELINE_LIMIT, 1);
-    conf.setInt(ScmConfigKeys.OZONE_SCM_PIPELINE_OWNER_CONTAINER_COUNT, 1);
-    cluster = MiniOzoneCluster.newBuilder(conf).setNumDatanodes(3).build();
-    cluster.waitForClusterToBeReady();
-    //the easiest way to create an open container is creating a key
-    client = OzoneClientFactory.getRpcClient(conf);
+    cluster = cluster();
+    client = cluster.newClient();
     objectStore = client.getObjectStore();
     keyString = UUID.randomUUID().toString();
-    volumeName = "closecontainerexceptionhandlingtest";
-    bucketName = volumeName;
+    volumeName = UUID.randomUUID().toString();
+    bucketName = "bucket";
     objectStore.createVolume(volumeName);
     objectStore.getVolume(volumeName).createBucket(bucketName);
   }
 
-  private String getKeyName() {
-    return UUID.randomUUID().toString();
-  }
-
-  /**
-  * Shutdown MiniDFSCluster.
-  */
-
-  @AfterClass
-  public static void shutdown() {
+  @AfterAll
+  void cleanup() {
     IOUtils.closeQuietly(client);
-    if (cluster != null) {
-      cluster.shutdown();
-    }
   }
 
   @Test
   public void testDiscardPreallocatedBlocks() throws Exception {
-    String keyName = getKeyName();
+    String keyName = "key";
     OzoneOutputStream key =
-        createKey(keyName, ReplicationType.RATIS, 2 * blockSize);
+        createKey(keyName, ReplicationType.RATIS, 2L * blockSize, objectStore, volumeName, bucketName);
     KeyOutputStream keyOutputStream =
-        (KeyOutputStream) key.getOutputStream();
-    Assert.assertTrue(key.getOutputStream() instanceof KeyOutputStream);
+        assertInstanceOf(KeyOutputStream.class, key.getOutputStream());
     // With the initial size provided, it should have pre allocated 2 blocks
-    Assert.assertEquals(2, keyOutputStream.getStreamEntries().size());
-    long containerID1 = keyOutputStream.getStreamEntries().get(0)
-            .getBlockID().getContainerID();
-    long containerID2 = keyOutputStream.getStreamEntries().get(1)
-            .getBlockID().getContainerID();
-    Assert.assertEquals(containerID1, containerID2);
+    assertEquals(2, keyOutputStream.getStreamEntries().size());
     String dataString =
         ContainerTestHelper.getFixedLengthString(keyString, (1 * blockSize));
     byte[] data = dataString.getBytes(UTF_8);
@@ -161,36 +112,22 @@ public class TestDiscardPreallocatedBlocks {
         cluster.getStorageContainerManager().getPipelineManager()
             .getPipeline(container.getPipelineID());
     List<DatanodeDetails> datanodes = pipeline.getNodes();
-    Assert.assertEquals(3, datanodes.size());
-    waitForContainerClose(key);
+    assertEquals(3, datanodes.size());
+    waitForContainerClose(key, cluster);
     dataString =
         ContainerTestHelper.getFixedLengthString(keyString, (1 * blockSize));
     data = dataString.getBytes(UTF_8);
     key.write(data);
-    Assert.assertEquals(3, keyOutputStream.getStreamEntries().size());
+    assertEquals(3, keyOutputStream.getStreamEntries().size());
     // the 1st block got written. Now all the containers are closed, so the 2nd
     // pre allocated block will be removed from the list and new block should
     // have been allocated
-    Assert.assertTrue(
-        keyOutputStream.getLocationInfoList().get(0).getBlockID()
-            .equals(locationInfos.get(0).getBlockID()));
-    Assert.assertFalse(
-        locationStreamInfos.get(1).getBlockID()
-            .equals(keyOutputStream.getLocationInfoList().get(1).getBlockID()));
+    assertEquals(
+        keyOutputStream.getLocationInfoList().get(0).getBlockID(),
+        locationInfos.get(0).getBlockID());
+    assertNotEquals(locationStreamInfos.get(1).getBlockID(),
+        keyOutputStream.getLocationInfoList().get(1).getBlockID());
     key.close();
-
-  }
-
-  private OzoneOutputStream createKey(String keyName, ReplicationType type,
-      long size) throws Exception {
-    return TestHelper
-        .createKey(keyName, type, size, objectStore, volumeName, bucketName);
-  }
-
-  private void waitForContainerClose(OzoneOutputStream outputStream)
-      throws Exception {
-    TestHelper
-        .waitForContainerClose(outputStream, cluster);
   }
 
 }

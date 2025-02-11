@@ -43,6 +43,7 @@ import org.apache.hadoop.ozone.container.keyvalue.impl.ChunkManagerFactory;
 import org.apache.hadoop.ozone.container.keyvalue.interfaces.ChunkManager;
 
 import com.codahale.metrics.Timer;
+import org.kohsuke.MetaInfServices;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine.Command;
@@ -60,6 +61,7 @@ import static org.apache.commons.lang3.RandomStringUtils.randomAscii;
     versionProvider = HddsVersionProvider.class,
     mixinStandardHelpOptions = true,
     showDefaultValues = true)
+@MetaInfServices(FreonSubcommand.class)
 @SuppressWarnings("java:S2245") // no need for secure random
 public class ChunkManagerDiskWrite extends BaseFreonGenerator implements
     Callable<Void> {
@@ -170,13 +172,12 @@ public class ChunkManagerDiskWrite extends BaseFreonGenerator implements
     ChunkInfo chunkInfo = new ChunkInfo(chunkName, offset, chunkSize);
     LOG.debug("Writing chunk {}: containerID:{} localID:{} offset:{} " +
             "bytesWritten:{}", l, containerID, localID, offset, bytesWritten);
-    DispatcherContext context =
-        new DispatcherContext.Builder()
-            .setStage(WriteChunkStage.WRITE_DATA)
-            .setTerm(1L)
-            .setLogIndex(l)
-            .setReadFromTmpFile(false)
-            .build();
+    final DispatcherContext context = DispatcherContext
+        .newBuilder(DispatcherContext.Op.WRITE_STATE_MACHINE_DATA)
+        .setStage(WriteChunkStage.WRITE_DATA)
+        .setTerm(1L)
+        .setLogIndex(l)
+        .build();
     ByteBuffer buffer = ByteBuffer.wrap(data);
 
     timer.time(() -> {

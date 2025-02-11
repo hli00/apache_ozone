@@ -20,20 +20,19 @@ package org.apache.hadoop.hdds.scm.ha;
 
 import com.google.protobuf.ByteString;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
-import org.apache.hadoop.hdds.scm.ScmConfigKeys;
 import org.apache.hadoop.hdds.scm.metadata.SCMDBDefinition;
 import org.apache.hadoop.hdds.utils.db.DBStore;
 import org.apache.hadoop.hdds.utils.db.DBStoreBuilder;
 import org.apache.hadoop.hdds.utils.db.Table;
 import org.apache.hadoop.ozone.container.common.SCMTestUtils;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-
 import java.io.File;
 import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests StatefulServiceStateManagerImpl.
@@ -48,8 +47,7 @@ public class TestStatefulServiceStateManagerImpl {
   @BeforeEach
   void setup(@TempDir File testDir) throws IOException {
     conf = SCMTestUtils.getConf(testDir);
-    conf.setBoolean(ScmConfigKeys.OZONE_SCM_HA_ENABLE_KEY, true);
-    dbStore = DBStoreBuilder.createDBStore(conf, new SCMDBDefinition());
+    dbStore = DBStoreBuilder.createDBStore(conf, SCMDBDefinition.get());
     statefulServiceConfig =
         SCMDBDefinition.STATEFUL_SERVICE_CONFIG.getTable(dbStore);
     scmhaManager = SCMHAManagerStub.getInstance(true, dbStore);
@@ -81,7 +79,6 @@ public class TestStatefulServiceStateManagerImpl {
     stateManager.saveConfiguration(serviceName,
         ByteString.copyFromUtf8(message));
     scmhaManager.asSCMHADBTransactionBuffer().flush();
-    Assertions.assertEquals(ByteString.copyFromUtf8(message),
-        stateManager.readConfiguration(serviceName));
+    assertEquals(ByteString.copyFromUtf8(message), stateManager.readConfiguration(serviceName));
   }
 }

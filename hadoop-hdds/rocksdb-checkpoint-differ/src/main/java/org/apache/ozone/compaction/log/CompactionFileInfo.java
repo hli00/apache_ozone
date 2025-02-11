@@ -18,8 +18,11 @@
 
 package org.apache.ozone.compaction.log;
 
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import org.apache.hadoop.hdds.StringUtils;
 import org.apache.hadoop.hdds.protocol.proto.HddsProtos;
-import org.apache.hadoop.util.Preconditions;
+import org.rocksdb.LiveFileMetaData;
 
 import java.util.Objects;
 
@@ -32,10 +35,11 @@ public final class CompactionFileInfo {
   private final String endKey;
   private final String columnFamily;
 
-  private CompactionFileInfo(String fileName,
-                             String startRange,
-                             String endRange,
-                             String columnFamily) {
+  @VisibleForTesting
+  public CompactionFileInfo(String fileName,
+                            String startRange,
+                            String endRange,
+                            String columnFamily) {
     this.fileName = fileName;
     this.startKey = startRange;
     this.endKey = endRange;
@@ -123,6 +127,16 @@ public final class CompactionFileInfo {
 
     public Builder setColumnFamily(String columnFamily) {
       this.columnFamily = columnFamily;
+      return this;
+    }
+
+    public Builder setValues(LiveFileMetaData fileMetaData) {
+      if (fileMetaData != null) {
+        String columnFamilyName = StringUtils.bytes2String(fileMetaData.columnFamilyName());
+        String startRangeValue = StringUtils.bytes2String(fileMetaData.smallestKey());
+        String endRangeValue = StringUtils.bytes2String(fileMetaData.largestKey());
+        this.setColumnFamily(columnFamilyName).setStartRange(startRangeValue).setEndRange(endRangeValue);
+      }
       return this;
     }
 

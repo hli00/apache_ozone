@@ -40,6 +40,10 @@ import org.junit.jupiter.api.Test;
  */
 public class TestReconInternalSchemaDefinition extends AbstractReconSqlDBTest {
 
+  public TestReconInternalSchemaDefinition() {
+    super();
+  }
+
   @Test
   public void testSchemaCreated() throws Exception {
 
@@ -56,6 +60,10 @@ public class TestReconInternalSchemaDefinition extends AbstractReconSqlDBTest {
         Types.BIGINT));
     expectedPairs.add(new ImmutablePair<>("last_updated_seq_number",
         Types.BIGINT));
+    expectedPairs.add(new ImmutablePair<>("last_task_run_status",
+        Types.INTEGER));
+    expectedPairs.add(new ImmutablePair<>("is_current_task_running",
+        Types.INTEGER));
 
     List<Pair<String, Integer>> actualPairs = new ArrayList<>();
 
@@ -65,7 +73,7 @@ public class TestReconInternalSchemaDefinition extends AbstractReconSqlDBTest {
           resultSet.getInt("DATA_TYPE")));
     }
 
-    assertEquals(3, actualPairs.size());
+    assertEquals(5, actualPairs.size());
     assertEquals(expectedPairs, actualPairs);
   }
 

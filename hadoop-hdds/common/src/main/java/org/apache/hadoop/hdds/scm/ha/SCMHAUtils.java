@@ -25,7 +25,6 @@ import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.hdds.HddsUtils;
 import org.apache.hadoop.hdds.conf.ConfigurationException;
 import org.apache.hadoop.hdds.conf.ConfigurationSource;
-import org.apache.hadoop.hdds.conf.DefaultConfigManager;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.ratis.ServerNotLeaderException;
 import org.apache.hadoop.hdds.scm.ScmConfigKeys;
@@ -54,7 +53,7 @@ import java.util.Collection;
 import java.util.List;
 
 import static org.apache.hadoop.hdds.HddsConfigKeys.OZONE_METADATA_DIRS;
-import static org.apache.hadoop.ozone.OzoneConsts.SCM_RATIS_SNAPSHOT_DIR;
+import static org.apache.hadoop.ozone.OzoneConsts.OZONE_RATIS_SNAPSHOT_DIR;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_DEFAULT_SERVICE_ID;
 import static org.apache.hadoop.hdds.scm.ScmConfigKeys.OZONE_SCM_SERVICE_IDS_KEY;
 
@@ -65,7 +64,7 @@ public final class SCMHAUtils {
   public static final Logger LOG =
       LoggerFactory.getLogger(SCMHAUtils.class);
 
-  private static final List<Class<? extends Exception>>
+  private static final ImmutableList<Class<? extends Exception>>
       RETRIABLE_WITH_NO_FAILOVER_EXCEPTION_LIST =
       ImmutableList.<Class<? extends Exception>>builder()
           .add(LeaderNotReadyException.class)
@@ -74,7 +73,7 @@ public final class SCMHAUtils {
           .add(ResourceUnavailableException.class)
           .build();
 
-  private static final List<Class<? extends Exception>>
+  private static final ImmutableList<Class<? extends Exception>>
       NON_RETRIABLE_EXCEPTION_LIST =
       ImmutableList.<Class<? extends Exception>>builder()
           .add(SCMException.class)
@@ -87,11 +86,14 @@ public final class SCMHAUtils {
     // not used
   }
 
-  // Check if SCM HA is enabled.
+  // This will be removed in follow-up Jira. Ref. HDDS-11754
+  private static boolean isRatisEnabled = true;
   public static boolean isSCMHAEnabled(ConfigurationSource conf) {
-    return conf.getBoolean(ScmConfigKeys.OZONE_SCM_HA_ENABLE_KEY,
-        DefaultConfigManager.getValue(ScmConfigKeys.OZONE_SCM_HA_ENABLE_KEY,
-            ScmConfigKeys.OZONE_SCM_HA_ENABLE_DEFAULT));
+    return isRatisEnabled;
+  }
+
+  public static void setRatisEnabled(boolean value) {
+    isRatisEnabled = value;
   }
 
   public static String getPrimordialSCM(ConfigurationSource conf) {
@@ -113,10 +115,6 @@ public final class SCMHAUtils {
                                                  String scmServiceId) {
     String key = addSuffix(ScmConfigKeys.OZONE_SCM_NODES_KEY, scmServiceId);
     return conf.getTrimmedStringCollection(key);
-  }
-
-  public static String  getLocalSCMNodeId(String scmServiceId) {
-    return addSuffix(ScmConfigKeys.OZONE_SCM_NODES_KEY, scmServiceId);
   }
 
   /**
@@ -163,7 +161,7 @@ public final class SCMHAUtils {
           OZONE_METADATA_DIRS);
       File metaDirPath = ServerUtils.getOzoneMetaDirPath(conf);
       snapshotDir =
-          Paths.get(metaDirPath.getPath(), SCM_RATIS_SNAPSHOT_DIR).toString();
+          Paths.get(metaDirPath.getPath(), OZONE_RATIS_SNAPSHOT_DIR).toString();
     }
     return snapshotDir;
   }
@@ -320,7 +318,7 @@ public final class SCMHAUtils {
     return null;
   }
 
-  public static List<Class<? extends
+  private static List<Class<? extends
       Exception>> getRetriableWithNoFailoverExceptionList() {
     return RETRIABLE_WITH_NO_FAILOVER_EXCEPTION_LIST;
   }

@@ -33,12 +33,13 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_BLOCK_DELETING_SERVICE_WORKERS;
 import static org.apache.hadoop.ozone.container.common.statemachine.DatanodeConfiguration.HDDS_DATANODE_BLOCK_DELETE_THREAD_MAX;
+import static org.apache.hadoop.ozone.container.replication.ReplicationServer.ReplicationConfig.REPLICATION_STREAMS_LIMIT_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for Datanode reconfiguration.
  */
-class TestDatanodeReconfiguration extends ReconfigurationTestBase {
+public abstract class TestDatanodeReconfiguration extends ReconfigurationTestBase {
   @Override
   ReconfigurationHandler getSubject() {
     return getFirstDatanode().getReconfigurationHandler();
@@ -49,6 +50,7 @@ class TestDatanodeReconfiguration extends ReconfigurationTestBase {
     Set<String> expected = ImmutableSet.<String>builder()
         .add(HDDS_DATANODE_BLOCK_DELETE_THREAD_MAX)
         .add(OZONE_BLOCK_DELETING_SERVICE_WORKERS)
+        .add(REPLICATION_STREAMS_LIMIT_KEY)
         .addAll(new DatanodeConfiguration().reconfigurableProperties())
         .build();
 
@@ -91,8 +93,22 @@ class TestDatanodeReconfiguration extends ReconfigurationTestBase {
     assertEquals(newValue, executor.getCorePoolSize());
   }
 
+  @ParameterizedTest
+  @ValueSource(ints = { -1, +1 })
+  void replicationStreamsLimit(int delta) throws ReconfigurationException {
+    ThreadPoolExecutor executor =
+        getFirstDatanode().getDatanodeStateMachine().getContainer()
+            .getReplicationServer().getExecutor();
+    int newValue = executor.getCorePoolSize() + delta;
+
+    getFirstDatanode().getReconfigurationHandler().reconfigurePropertyImpl(
+        REPLICATION_STREAMS_LIMIT_KEY, String.valueOf(newValue));
+    assertEquals(newValue, executor.getMaximumPoolSize());
+    assertEquals(newValue, executor.getCorePoolSize());
+  }
+
   private HddsDatanodeService getFirstDatanode() {
-    return getCluster().getHddsDatanodes().get(0);
+    return cluster().getHddsDatanodes().get(0);
   }
 
 }

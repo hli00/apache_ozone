@@ -19,7 +19,7 @@
 package org.apache.hadoop.ozone.shell;
 
 import org.apache.hadoop.hdds.utils.IOUtils;
-import org.apache.hadoop.hdds.cli.OzoneAdmin;
+import org.apache.hadoop.ozone.admin.OzoneAdmin;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.ozone.MiniOzoneCluster;
 import org.apache.hadoop.ozone.StandardOutputTestBase;
@@ -29,23 +29,21 @@ import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneVolume;
 import org.apache.hadoop.ozone.om.helpers.BucketLayout;
 import org.apache.hadoop.ozone.om.request.OMRequestTestUtils;
-import org.apache.ozone.test.JUnit5AwareTimeout;
-import org.junit.AfterClass;
-import org.junit.Assert;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TestRule;
-import org.junit.rules.Timeout;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.io.UnsupportedEncodingException;
 import java.util.UUID;
 
 import static org.apache.hadoop.hdds.recon.ReconConfigKeys.OZONE_RECON_ADDRESS_KEY;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Test for Namespace CLI.
  */
+@Timeout(60)
 public class TestNSSummaryAdmin extends StandardOutputTestBase {
   private static ObjectStore store;
 
@@ -58,12 +56,10 @@ public class TestNSSummaryAdmin extends StandardOutputTestBase {
   private static String bucketFSO;
   private static OzoneClient client;
 
-  @Rule
-  public TestRule timeout = new JUnit5AwareTimeout(Timeout.seconds(60));
-
-  @BeforeClass
+  @BeforeAll
   public static void init() throws Exception {
-    conf = new OzoneConfiguration();
+    ozoneAdmin = new OzoneAdmin();
+    conf = ozoneAdmin.getOzoneConf();
     OMRequestTestUtils.configureFSOptimizedPaths(conf, true);
     conf.set(OZONE_RECON_ADDRESS_KEY, "localhost:9888");
     cluster = MiniOzoneCluster.newBuilder(conf)
@@ -72,16 +68,13 @@ public class TestNSSummaryAdmin extends StandardOutputTestBase {
     client = cluster.newClient();
     store = client.getObjectStore();
 
-    // Client uses server conf for this test
-    ozoneAdmin = new OzoneAdmin(conf);
-
     volumeName = UUID.randomUUID().toString();
     bucketOBS = UUID.randomUUID().toString();
     bucketFSO = UUID.randomUUID().toString();
     createVolumeAndBuckets();
   }
 
-  @AfterClass
+  @AfterAll
   public static void shutdown() {
     IOUtils.closeQuietly(client);
     if (cluster != null) {
@@ -119,14 +112,26 @@ public class TestNSSummaryAdmin extends StandardOutputTestBase {
     // Running on root path.
     String path = "/";
     executeAdminCommands(path);
-    // Should throw warning - only buckets can have bucket layout.
-    Assert.assertTrue(
-        getOutContentString().contains(
-            "[Warning] Namespace CLI is not designed for OBS bucket layout."));
-    Assert.assertTrue(getOutContentString()
-        .contains("Put more files into it to visualize DU"));
-    Assert.assertTrue(getOutContentString().contains(
-        "Put more files into it to visualize file size distribution"));
+    assertThat(getOutContentString()).doesNotContain("INVALID_VOLUME_NAME");
+    assertThat(getOutContentString()).doesNotContain(
+        "[Warning] Namespace CLI is not designed for OBS bucket layout.");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize DU");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize file size distribution");
+  }
+
+  /**
+   * Test NSSummaryCLI on volume.
+   */
+  @Test
+  public void testNSSummaryCLIVolume() throws UnsupportedEncodingException {
+    // Running on /volume path.
+    String path = "/" + volumeName;
+    executeAdminCommands(path);
+    assertThat(getOutContentString()).doesNotContain("INVALID_BUCKET_NAME");
+    assertThat(getOutContentString()).doesNotContain(
+        "[Warning] Namespace CLI is not designed for OBS bucket layout.");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize DU");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize file size distribution");
   }
 
   /**
@@ -138,13 +143,10 @@ public class TestNSSummaryAdmin extends StandardOutputTestBase {
     String path = "/" + volumeName + "/" + bucketFSO;
     executeAdminCommands(path);
     // Should not throw warning, since bucket is in FSO bucket layout.
-    Assert.assertFalse(
-        getOutContentString().contains(
-            "[Warning] Namespace CLI is not designed for OBS bucket layout."));
-    Assert.assertTrue(getOutContentString()
-        .contains("Put more files into it to visualize DU"));
-    Assert.assertTrue(getOutContentString().contains(
-        "Put more files into it to visualize file size distribution"));
+    assertThat(getOutContentString())
+        .doesNotContain("[Warning] Namespace CLI is not designed for OBS bucket layout.");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize DU");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize file size distribution");
   }
 
   /**
@@ -156,13 +158,9 @@ public class TestNSSummaryAdmin extends StandardOutputTestBase {
     String path = "/" + volumeName + "/" + bucketOBS;
     executeAdminCommands(path);
     // Should throw warning, since bucket is in OBS bucket layout.
-    Assert.assertTrue(
-        getOutContentString().contains(
-            "[Warning] Namespace CLI is not designed for OBS bucket layout."));
-    Assert.assertTrue(getOutContentString()
-        .contains("Put more files into it to visualize DU"));
-    Assert.assertTrue(getOutContentString().contains(
-        "Put more files into it to visualize file size distribution"));
+    assertThat(getOutContentString()).contains("[Warning] Namespace CLI is not designed for OBS bucket layout.");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize DU");
+    assertThat(getOutContentString()).contains("Put more files into it to visualize file size distribution");
   }
 
   /**

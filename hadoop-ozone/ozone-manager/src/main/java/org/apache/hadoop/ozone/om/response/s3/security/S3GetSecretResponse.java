@@ -28,8 +28,8 @@ import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos;
 import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
 import org.apache.hadoop.hdds.utils.db.BatchOperation;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
 import java.io.IOException;
 
 import static org.apache.hadoop.ozone.om.OmMetadataManagerImpl.S3_SECRET_TABLE;
@@ -59,12 +59,9 @@ public class S3GetSecretResponse extends OMClientResponse {
         = getOMResponse().getStatus() == OzoneManagerProtocolProtos.Status.OK;
     if (s3SecretValue != null && isOk) {
       if (s3SecretManager.isBatchSupported()) {
-        s3SecretManager.batcher().addWithBatch(batchOperation,
-            s3SecretValue.getKerberosID(), s3SecretValue);
-      } else {
-        s3SecretManager.storeSecret(s3SecretValue.getKerberosID(),
-            s3SecretValue);
-      }
+        s3SecretManager.batcher()
+            .addWithBatch(batchOperation, s3SecretValue.getKerberosID(), s3SecretValue);
+      } // else - the secret has already been stored in S3GetSecretRequest.
     }
   }
 

@@ -18,12 +18,12 @@
 package org.apache.hadoop.ozone.protocolPB;
 
 import org.apache.hadoop.ozone.om.exceptions.OMException;
+import org.apache.hadoop.ozone.om.execution.flowcontrol.ExecutionContext;
 import org.apache.hadoop.ozone.om.ratis.OzoneManagerDoubleBuffer;
 import org.apache.hadoop.ozone.om.response.OMClientResponse;
-import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.
-    OMRequest;
-import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.
-    OMResponse;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMRequest;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.OMResponse;
+import org.apache.hadoop.ozone.protocol.proto.OzoneManagerProtocolProtos.Type;
 
 import java.io.IOException;
 
@@ -49,22 +49,30 @@ public interface RequestHandler {
   void validateRequest(OMRequest omRequest) throws OMException;
 
   /**
-   * Handle write requests. In HA this will be called from
-   * OzoneManagerStateMachine applyTransaction method. In non-HA this will be
-   * called from {@link OzoneManagerProtocolServerSideTranslatorPB} for write
-   * requests.
-   * @param omRequest
-   * @param transactionLogIndex - ratis transaction log index
+   * Handle write requests.
+   * In HA this will be called from OzoneManagerStateMachine applyTransaction method.
+   * In non-HA this will be called from {@link OzoneManagerProtocolServerSideTranslatorPB}.
+   *
+   * @param omRequest the write request
+   * @param context - context containing ratis term index and index
+   * @param ozoneManagerDoubleBuffer for adding response
    * @return OMClientResponse
    */
-  OMClientResponse handleWriteRequest(OMRequest omRequest,
-      long transactionLogIndex) throws IOException;
+  default OMClientResponse handleWriteRequest(OMRequest omRequest, ExecutionContext context,
+      OzoneManagerDoubleBuffer ozoneManagerDoubleBuffer) throws IOException {
+    final OMClientResponse response = handleWriteRequestImpl(omRequest, context);
+    if (omRequest.getCmdType() != Type.Prepare) {
+      ozoneManagerDoubleBuffer.add(response, context.getTermIndex());
+    }
+    return response;
+  }
 
   /**
-   * Update the OzoneManagerDoubleBuffer. This will be called when
-   * stateMachine is unpaused and set with new doublebuffer object.
-   * @param ozoneManagerDoubleBuffer
+   * Implementation of {@link #handleWriteRequest}.
+   *
+   * @param omRequest the write request
+   * @param context - context containing ratis term index and index
+   * @return OMClientResponse
    */
-  void updateDoubleBuffer(OzoneManagerDoubleBuffer ozoneManagerDoubleBuffer);
-
+  OMClientResponse handleWriteRequestImpl(OMRequest omRequest, ExecutionContext context) throws IOException;
 }

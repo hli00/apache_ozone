@@ -29,9 +29,8 @@ import org.apache.hadoop.ozone.OzoneConfigKeys;
 import org.apache.hadoop.ozone.client.OzoneBucket;
 import org.apache.hadoop.ozone.client.OzoneClient;
 import org.apache.hadoop.ozone.client.OzoneClientStub;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.container.ContainerRequestContext;
 import javax.ws.rs.core.HttpHeaders;
@@ -47,8 +46,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.hadoop.ozone.OzoneConfigKeys.OZONE_FS_DATASTREAM_AUTO_THRESHOLD;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.COPY_SOURCE_HEADER;
 import static org.apache.hadoop.ozone.s3.util.S3Consts.STORAGE_CLASS_HEADER;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
@@ -56,49 +56,49 @@ import static org.mockito.Mockito.when;
  */
 public class TestUploadWithStream {
 
-  private static final ObjectEndpoint REST = new ObjectEndpoint();
-
   private static final String S3BUCKET = "streamb1";
   private static final String S3KEY = "testkey";
   private static final String S3_COPY_EXISTING_KEY = "test_copy_existing_key";
   private static final String S3_COPY_EXISTING_KEY_CONTENT =
       "test_copy_existing_key_content";
-  private static OzoneClient client;
-  private static final HttpHeaders HEADERS;
-  private static ContainerRequestContext context;
 
-  static {
-    HEADERS = Mockito.mock(HttpHeaders.class);
-    when(HEADERS.getHeaderString(STORAGE_CLASS_HEADER)).thenReturn("STANDARD");
-  }
+  private ObjectEndpoint rest;
 
-  @BeforeClass
-  public static void setUp() throws Exception {
+  private OzoneClient client;
+  private ContainerRequestContext context;
+
+  @BeforeEach
+  public void setUp() throws Exception {
     client = new OzoneClientStub();
     client.getObjectStore().createS3Bucket(S3BUCKET);
 
-    REST.setHeaders(HEADERS);
-    REST.setClient(client);
+    HttpHeaders headers = mock(HttpHeaders.class);
+    when(headers.getHeaderString(STORAGE_CLASS_HEADER)).thenReturn("STANDARD");
 
     OzoneConfiguration conf = new OzoneConfiguration();
-    conf.setBoolean(OzoneConfigKeys.DFS_CONTAINER_RATIS_DATASTREAM_ENABLED,
+    conf.setBoolean(OzoneConfigKeys.HDDS_CONTAINER_RATIS_DATASTREAM_ENABLED,
         true);
     conf.setStorageSize(OZONE_FS_DATASTREAM_AUTO_THRESHOLD, 1,
         StorageUnit.BYTES);
-    REST.setOzoneConfiguration(conf);
 
-    context = Mockito.mock(ContainerRequestContext.class);
-    Mockito.when(context.getUriInfo()).thenReturn(Mockito.mock(UriInfo.class));
-    Mockito.when(context.getUriInfo().getQueryParameters())
+    context = mock(ContainerRequestContext.class);
+    when(context.getUriInfo()).thenReturn(mock(UriInfo.class));
+    when(context.getUriInfo().getQueryParameters())
         .thenReturn(new MultivaluedHashMap<>());
-    REST.setContext(context);
 
-    REST.init();
+    rest = EndpointBuilder.newObjectEndpointBuilder()
+        .setClient(client)
+        .setHeaders(headers)
+        .setConfig(conf)
+        .setContext(context)
+        .build();
+
+    rest.init();
   }
 
   @Test
   public void testEnableStream() {
-    assertTrue(REST.isDatastreamEnabled());
+    assertTrue(rest.isDatastreamEnabled());
   }
 
   @Test
@@ -106,7 +106,7 @@ public class TestUploadWithStream {
     byte[] keyContent = S3_COPY_EXISTING_KEY_CONTENT.getBytes(UTF_8);
     ByteArrayInputStream body =
         new ByteArrayInputStream(keyContent);
-    Response response = REST.put(S3BUCKET, S3KEY, 0, 0, null, body);
+    Response response = rest.put(S3BUCKET, S3KEY, 0, 0, null, null, null, body);
 
     assertEquals(200, response.getStatus());
   }
@@ -132,15 +132,15 @@ public class TestUploadWithStream {
     additionalHeaders
         .put(COPY_SOURCE_HEADER, S3BUCKET + "/" + S3_COPY_EXISTING_KEY);
 
-    HttpHeaders headers = Mockito.mock(HttpHeaders.class);
+    HttpHeaders headers = mock(HttpHeaders.class);
     when(headers.getHeaderString(STORAGE_CLASS_HEADER)).thenReturn(
         "STANDARD");
 
     additionalHeaders
         .forEach((k, v) -> when(headers.getHeaderString(k)).thenReturn(v));
-    REST.setHeaders(headers);
+    rest.setHeaders(headers);
 
-    Response response = REST.put(S3BUCKET, S3KEY, 0, 0, null, null);
+    Response response = rest.put(S3BUCKET, S3KEY, 0, 0, null, null, null, null);
 
     assertEquals(200, response.getStatus());
 

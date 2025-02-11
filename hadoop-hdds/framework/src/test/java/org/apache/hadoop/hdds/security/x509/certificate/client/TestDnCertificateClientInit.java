@@ -20,16 +20,17 @@ package org.apache.hadoop.hdds.security.x509.certificate.client;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
+import org.apache.hadoop.hdds.protocol.DatanodeDetails;
+import org.apache.hadoop.hdds.protocol.MockDatanodeDetails;
 import org.apache.hadoop.hdds.security.SecurityConfig;
 import org.apache.hadoop.hdds.security.x509.certificate.utils.CertificateCodec;
 import org.apache.hadoop.hdds.security.x509.keys.HDDSKeyGenerator;
-import org.apache.hadoop.hdds.security.x509.keys.KeyCodec;
+import org.apache.hadoop.hdds.security.x509.keys.KeyStorage;
 import org.apache.hadoop.ozone.OzoneSecurityUtil;
 import org.apache.hadoop.security.ssl.KeyStoreTestUtil;
-import org.apache.ozone.test.GenericTestUtils;
-import org.bouncycastle.cert.X509CertificateHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -40,7 +41,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.KeyPair;
 import java.security.cert.X509Certificate;
-import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.apache.hadoop.hdds.HddsConfigKeys.HDDS_METADATA_DIR_NAME;
@@ -59,11 +59,12 @@ public class TestDnCertificateClientInit {
 
   private KeyPair keyPair;
   private String certSerialId = "3284792342234";
-  private CertificateClient dnCertificateClient;
+  private DNCertificateClient dnCertificateClient;
   private HDDSKeyGenerator keyGenerator;
+  @TempDir
   private Path metaDirPath;
   private SecurityConfig securityConfig;
-  private KeyCodec dnKeyCodec;
+  private KeyStorage dnKeyStorage;
   private X509Certificate x509Certificate;
   private static final String DN_COMPONENT = DNCertificateClient.COMPONENT_NAME;
 
@@ -72,7 +73,7 @@ public class TestDnCertificateClientInit {
         arguments(false, false, false, GETCERT),
         arguments(false, false, true, FAILURE),
         arguments(false, true, false, FAILURE),
-        arguments(true, false, false, FAILURE),
+        arguments(true, false, false, GETCERT),
         arguments(false, true, true, FAILURE),
         arguments(true, true, false, GETCERT),
         arguments(true, false, true, SUCCESS),
@@ -83,19 +84,17 @@ public class TestDnCertificateClientInit {
   @BeforeEach
   public void setUp() throws Exception {
     OzoneConfiguration config = new OzoneConfiguration();
-    final String path = GenericTestUtils
-        .getTempPath(UUID.randomUUID().toString());
-    metaDirPath = Paths.get(path, "test");
     config.set(HDDS_METADATA_DIR_NAME, metaDirPath.toString());
     securityConfig = new SecurityConfig(config);
     keyGenerator = new HDDSKeyGenerator(securityConfig);
     keyPair = keyGenerator.generateKey();
     x509Certificate = getX509Certificate();
     certSerialId = x509Certificate.getSerialNumber().toString();
+    DatanodeDetails dn = MockDatanodeDetails.randomDatanodeDetails();
     dnCertificateClient =
         new DNCertificateClient(
-            securityConfig, null, null, certSerialId, null, null);
-    dnKeyCodec = new KeyCodec(securityConfig, DN_COMPONENT);
+            securityConfig, null, dn, certSerialId, null, null);
+    dnKeyStorage = new KeyStorage(securityConfig, DN_COMPONENT);
 
     Files.createDirectories(securityConfig.getKeyLocation(DN_COMPONENT));
   }
@@ -104,7 +103,6 @@ public class TestDnCertificateClientInit {
   public void tearDown() throws IOException {
     dnCertificateClient.close();
     dnCertificateClient = null;
-    FileUtils.deleteQuietly(metaDirPath.toFile());
   }
 
 
@@ -113,7 +111,7 @@ public class TestDnCertificateClientInit {
   public void testInitDatanode(boolean pvtKeyPresent, boolean pubKeyPresent,
       boolean certPresent, InitResponse expectedResult) throws Exception {
     if (pvtKeyPresent) {
-      dnKeyCodec.writePrivateKey(keyPair.getPrivate());
+      dnKeyStorage.storePrivateKey(keyPair.getPrivate());
     } else {
       FileUtils.deleteQuietly(Paths.get(
           securityConfig.getKeyLocation(DN_COMPONENT).toString(),
@@ -122,7 +120,7 @@ public class TestDnCertificateClientInit {
 
     if (pubKeyPresent) {
       if (dnCertificateClient.getPublicKey() == null) {
-        dnKeyCodec.writePublicKey(keyPair.getPublic());
+        dnKeyStorage.storePublicKey(keyPair.getPublic());
       }
     } else {
       FileUtils.deleteQuietly(
@@ -131,10 +129,8 @@ public class TestDnCertificateClientInit {
     }
 
     if (certPresent) {
-      CertificateCodec codec = new CertificateCodec(securityConfig,
-          DN_COMPONENT);
-      codec.writeCertificate(new X509CertificateHolder(
-          x509Certificate.getEncoded()));
+      CertificateCodec codec = new CertificateCodec(securityConfig, DN_COMPONENT);
+      codec.writeCertificate(x509Certificate);
     } else {
       FileUtils.deleteQuietly(Paths.get(
           securityConfig.getKeyLocation(DN_COMPONENT).toString(),

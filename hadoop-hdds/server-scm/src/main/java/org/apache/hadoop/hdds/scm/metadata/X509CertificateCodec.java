@@ -32,7 +32,7 @@ import org.apache.hadoop.hdds.utils.db.CodecBuffer;
 import org.apache.hadoop.hdds.utils.io.LengthOutputStream;
 import org.apache.ratis.util.function.CheckedFunction;
 
-import javax.annotation.Nonnull;
+import jakarta.annotation.Nonnull;
 
 /**
  * Codec to serialize/deserialize {@link X509Certificate}.
@@ -49,6 +49,11 @@ public final class X509CertificateCodec implements Codec<X509Certificate> {
 
   private X509CertificateCodec() {
     // singleton
+  }
+
+  @Override
+  public Class<X509Certificate> getTypeClass() {
+    return X509Certificate.class;
   }
 
   @Override

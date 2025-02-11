@@ -19,8 +19,7 @@ package org.apache.hadoop.ozone;
 
 import com.google.common.collect.Maps;
 import org.apache.hadoop.hdds.annotation.InterfaceAudience;
-import org.apache.hadoop.hdds.cli.OzoneAdmin;
-import org.apache.hadoop.hdds.conf.DefaultConfigManager;
+import org.apache.hadoop.ozone.admin.OzoneAdmin;
 import org.apache.hadoop.hdds.conf.OzoneConfiguration;
 import org.apache.hadoop.hdds.scm.ScmConfig;
 import org.apache.hadoop.hdds.scm.server.SCMHTTPServerConfig;
@@ -33,14 +32,7 @@ import org.apache.hadoop.ozone.om.OzoneManager;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ozone.test.GenericTestUtils;
 import org.apache.ratis.util.ExitUtils;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.jupiter.api.Assertions;
-import org.junit.rules.TestRule;
-import org.junit.rules.Timeout;
-import org.apache.ozone.test.JUnit5AwareTimeout;
+import org.junit.jupiter.api.io.TempDir;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +47,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Properties;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static java.time.Duration.between;
@@ -78,44 +70,44 @@ import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_KERBEROS_KEYTAB_F
 import static org.apache.hadoop.ozone.om.OMConfigKeys.OZONE_OM_KERBEROS_PRINCIPAL_KEY;
 import static org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * Integration test class to verify block token CLI commands functionality in a
  * secure cluster.
  */
 @InterfaceAudience.Private
+@Timeout(value = 180, unit = TimeUnit.SECONDS)
 public final class TestBlockTokensCLI {
   private static final Logger LOG = LoggerFactory
       .getLogger(TestBlockTokensCLI.class);
 
-  @Rule
-  public TestRule timeout = new JUnit5AwareTimeout(Timeout.seconds(180));
-
+  @TempDir
+  private static File workDir;
   private static MiniKdc miniKdc;
   private static OzoneAdmin ozoneAdmin;
   private static OzoneConfiguration conf;
-  private static File workDir;
   private static File ozoneKeytab;
   private static File spnegoKeytab;
   private static String host;
-  private static String clusterId;
-  private static String scmId;
   private static String omServiceId;
   private static String scmServiceId;
   private static MiniOzoneHAClusterImpl cluster;
   private static OzoneClient client;
 
-  @BeforeClass
+  @BeforeAll
   public static void init() throws Exception {
-    conf = new OzoneConfiguration();
+    ozoneAdmin = new OzoneAdmin();
+    conf = ozoneAdmin.getOzoneConf();
     conf.set(OZONE_SCM_CLIENT_ADDRESS_KEY, "localhost");
 
     ExitUtils.disableSystemExit();
 
-    workDir =
-        GenericTestUtils.getTestDir(TestBlockTokens.class.getSimpleName());
-    clusterId = UUID.randomUUID().toString();
-    scmId = UUID.randomUUID().toString();
     omServiceId = "om-service-test";
     scmServiceId = "scm-service-test";
 
@@ -125,17 +117,15 @@ public final class TestBlockTokensCLI {
     setSecretKeysConfig();
     startCluster();
     client = cluster.newClient();
-    ozoneAdmin = new OzoneAdmin(conf);
   }
 
-  @AfterClass
+  @AfterAll
   public static void stop() {
     miniKdc.stop();
     IOUtils.close(LOG, client);
     if (cluster != null) {
       cluster.stop();
     }
-    DefaultConfigManager.clearDefaultConfigs();
   }
 
   private SecretKeyManager getScmSecretKeyManager() {
@@ -270,7 +260,7 @@ public final class TestBlockTokensCLI {
     // rotating.
     String currentKey =
         getScmSecretKeyManager().getCurrentSecretKey().toString();
-    Assertions.assertEquals(initialKey, currentKey);
+    assertEquals(initialKey, currentKey);
 
     // Rotate the secret key.
     ozoneAdmin.execute(args);
@@ -286,9 +276,9 @@ public final class TestBlockTokensCLI {
     // Otherwise, both keys should be the same.
     if (isForceFlagPresent(args) ||
         shouldRotate(getScmSecretKeyManager().getCurrentSecretKey())) {
-      Assertions.assertNotEquals(initialKey, newKey);
+      assertNotEquals(initialKey, newKey);
     } else {
-      Assertions.assertEquals(initialKey, newKey);
+      assertEquals(initialKey, newKey);
     }
   }
 
@@ -312,7 +302,7 @@ public final class TestBlockTokensCLI {
    * format.
    */
   private String[] createArgsForCommand(String[] additionalArgs) {
-    OzoneConfiguration defaultConf = ozoneAdmin.createOzoneConfiguration();
+    OzoneConfiguration defaultConf = ozoneAdmin.getOzoneConf();
     Map<String, String> diff = Maps.difference(defaultConf.getOzoneProperties(),
         conf.getOzoneProperties()).entriesOnlyOnRight();
     String[] args = new String[diff.size() + additionalArgs.length];
@@ -327,16 +317,13 @@ public final class TestBlockTokensCLI {
   private static void startCluster()
       throws IOException, TimeoutException, InterruptedException {
     OzoneManager.setTestSecureOmFlag(true);
-    MiniOzoneCluster.Builder builder = MiniOzoneCluster.newHABuilder(conf)
-        .setClusterId(clusterId)
+    MiniOzoneHAClusterImpl.Builder builder = MiniOzoneCluster.newHABuilder(conf)
         .setSCMServiceId(scmServiceId)
         .setOMServiceId(omServiceId)
-        .setScmId(scmId)
-        .setNumDatanodes(3)
         .setNumOfStorageContainerManagers(3)
         .setNumOfOzoneManagers(3);
 
-    cluster = (MiniOzoneHAClusterImpl) builder.build();
+    cluster = builder.build();
     cluster.waitForClusterToBeReady();
   }
 }
