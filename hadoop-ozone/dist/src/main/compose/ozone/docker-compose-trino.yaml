@@ -14,10 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-HDDS_VERSION=2.0.0-SNAPSHOT
-HADOOP_IMAGE=apache/hadoop
-OZONE_RUNNER_VERSION=20241216-1-jdk21
-OZONE_RUNNER_IMAGE=apache/ozone-runner
-OZONE_OPTS=
-HIVE_IMAGE=apache/hive
-HIVE_VERSION=4.0.0
+#version: "3.4"
+
+services:
+  trino:
+    image: trinodb/trino:420
+##    depends_on:
+##      - metastore
+#      - spark-iceberg
+    volumes:
+      - ./trino.catalog:/etc/trino/catalog
+      - ./trino.config/log.properties:/etc/trino/log.properties
+      - ./trino_hive_jars:/usr/lib/trino/plugin/hive/hdfs	
+#      - ./trino_hive_jars:/usr/lib/trino/lib
+      - ../..:/opt/tiering

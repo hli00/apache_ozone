@@ -1,0 +1,30 @@
+#version: "3.9"
+services:
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: metastore_db
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+      - ./postgres.config/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      # - ./postgres.config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      # - ./postgresql-42.7.5.jar:/opt/hive/lib/postgresql-42.7.5.jar
+
+  metastore:
+    image: my-hive-metastore:latest #apache/hive:${HIVE_VERSION}
+    ports:
+      - "9083:9083"
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      SERVICE_OPTS: "-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=password" # Use Docker secrets in production
+    volumes:
+      - warehouse:/opt/hive/data/warehouse
+    depends_on:
+      - postgres
+
+volumes:
+  warehouse:
+  postgresql_data:

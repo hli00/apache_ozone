@@ -14,10 +14,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-HDDS_VERSION=2.0.0-SNAPSHOT
-HADOOP_IMAGE=apache/hadoop
-OZONE_RUNNER_VERSION=20241216-1-jdk21
-OZONE_RUNNER_IMAGE=apache/ozone-runner
-OZONE_OPTS=
-HIVE_IMAGE=apache/hive
-HIVE_VERSION=4.0.0
+#version: "3.4"
+
+services:
+  spark-iceberg:
+    image: tabulario/spark-iceberg:3.3.2_1.2.1
+    depends_on:
+      - iceberg-rest
+      - s3g
+    volumes:
+      - ./spark.conf:/opt/spark/conf
+    ports:
+      - 8888:8888
+      - 8080:8080
+      - 10000:10000
+      - 10001:10001
+    environment:
+      - AWS_ACCESS_KEY_ID=any
+      - AWS_SECRET_ACCESS_KEY=any
+      - AWS_REGION=us-east-1
+  iceberg-rest:
+    image: tabulario/iceberg-rest:0.5.0
+    ports:
+      - 8181:8181
+    environment:
+      - AWS_ACCESS_KEY_ID=any
+      - AWS_SECRET_ACCESS_KEY=any
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://s3g:9878/
+      - CATALOG_S3_PATH__STYLE__ACCESS=true

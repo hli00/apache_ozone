@@ -167,7 +167,11 @@ start_docker_env(){
   fi
 
   OZONE_COMPOSE_RUNNING=true
-  trap _compose_cleanup EXIT HUP INT TERM
+  KEEP_ENV_RUNNING=true
+  if [[ -z "$KEEP_ENV_RUNNING" ]]; then
+    trap _compose_cleanup EXIT HUP INT TERM
+  fi
+
   docker-compose --ansi never up -d $opts
 
   wait_for_safemode_exit
@@ -388,7 +392,7 @@ stop_docker_env(){
     down_repeats=3
     for i in $(seq 1 $down_repeats)
     do
-      if docker-compose --ansi never --profile "*" down --remove-orphans; then
+      if docker-compose --ansi never --profile "*" stop --remove-orphans; then
         OZONE_COMPOSE_RUNNING=false
         return
       fi
@@ -518,8 +522,8 @@ fix_data_dir_permissions() {
 ## @param `ozone` image version
 prepare_for_binary_image() {
   local v=$1
-  local default_image="${docker.ozone.image}" # set at build-time from Maven property
-  local default_flavor="${docker.ozone.image.flavor}" # set at build-time from Maven property
+  local default_image="apache/ozone" # set at build-time from Maven property
+  local default_flavor="-rocky" # set at build-time from Maven property
   local image="${OZONE_IMAGE:-${default_image}}" # may be specified by user running the test
   local flavor="${OZONE_IMAGE_FLAVOR:-${default_flavor}}" # may be specified by user running the test
 
