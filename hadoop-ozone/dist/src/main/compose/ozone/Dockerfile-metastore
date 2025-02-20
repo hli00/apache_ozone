@@ -1,0 +1,13 @@
+FROM apache/hive:4.0.1
+RUN mkdir -p /opt/hive/lib
+#COPY postgresql-42.7.5.jar /opt/hive/lib/
+#RUN chmod 644 /opt/hive/lib/postgresql-42.7.5.jar
+COPY --chown=root:root ./trino_hive_jars/postgresql-42.7.5.jar /opt/hive/lib/
+COPY --chown=root:root ./trino_hive_jars/aws-java-sdk-core-1.12.749.jar /opt/hive/lib/
+COPY --chown=root:root ./trino_hive_jars/aws-java-sdk-dynamodb-1.12.749.jar /opt/hive/lib/
+COPY --chown=root:root ./trino_hive_jars/aws-java-sdk-s3-1.12.749.jar /opt/hive/lib/
+COPY --chown=root:root ./trino_hive_jars/hadoop-aws-3.3.1.jar /opt/hive/lib/
+RUN ls -l /opt/hive/lib  # Optional: For debugging
+
+
+#Command to build the image: docker build -t my-hive-metastore:latest .

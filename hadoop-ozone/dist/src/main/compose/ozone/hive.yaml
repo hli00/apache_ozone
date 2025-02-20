@@ -1,0 +1,70 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# version: "3.9"
+services:
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: metastore_db
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+      - ./postgres.config/pg_hba.conf:/etc/postgresql/pg_hba.conf
+      # - ./postgres.config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+      # - ./postgresql-42.7.5.jar:/opt/hive/lib/postgresql-42.7.5.jar
+#    networks:
+#      - my-network
+
+  metastore:
+    image: my-hive-metastore:latest #apache/hive:${HIVE_VERSION}
+    ports:
+      - "9083:9083"
+    environment:
+      SERVICE_NAME: metastore
+      HIVE_CUSTOM_CONF_DIR: /opt/tiering/etc/hadoop
+      DB_DRIVER: postgres
+      SERVICE_OPTS: "-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=password" # Use Docker secrets in production
+    volumes:
+      - warehouse:/opt/hive/data/warehouse
+      - ../..:/opt/tiering
+      - ./hive.config/hive-site.xml:/opt/hive/conf/hive-site.xml
+#    networks:
+#      - my-network
+    depends_on:
+      - s3g
+      - postgres
+
+  hiveserver2:
+    image: my-hive-metastore:latest # Use the same image, or a dedicated hiveserver2 image if you have one
+    ports:
+      - "10000:10000"  # Expose HiveServer2 port (default)
+    environment:
+      SERVICE_NAME: hiveserver2 # Important: Set to "hiveserver2"
+      # ... other environment variables
+    depends_on:
+      - postgres
+#    networks:
+#      - my-network
+
+
+volumes:
+  warehouse:
+  postgresql_data:
+
+#networks:
+#  my-network:
