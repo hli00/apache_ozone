@@ -27,4 +27,4 @@ services:
       - ./trino.config/log.properties:/etc/trino/log.properties
 #      - ./trino_hive_jars:/usr/lib/trino/plugin/hive/hdfs
 #      - ./trino_hive_jars:/usr/lib/trino/lib
-      - ../..:/opt/tiering
+#      - ../..:/opt/tiering
