@@ -36,7 +36,7 @@ export BUCKET=warehouse
 
 execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
 
-docker-compose exec trino bash -c "mkdir -p /opt/tiering/trino/data/metastore_db && chmod 777 /opt/tiering/trino/data/metastore_db"
+#docker-compose exec trino bash -c "mkdir -p /opt/tiering/trino/data/metastore_db && chmod 777 /opt/tiering/trino/data/metastore_db"
 
 # docker cp ./trino_hive_jars/aws-java-sdk-bundle-1.11.1026.jar ozone-trino-1:/usr/lib/trino/plugin/hive/
 # docker cp ./trino_hive_jars/hadoop-aws-3.3.1.jar ozone-trino-1:/usr/lib/trino/plugin/hive/
