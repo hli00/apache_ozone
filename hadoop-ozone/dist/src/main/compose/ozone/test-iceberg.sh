@@ -46,7 +46,7 @@ execute_command_in_container trino trino <<EOF
 CREATE SCHEMA hive.test_schema;
 show CREATE SCHEMA hive.test_schema;
 -- CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema/t0');
-CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET');
+CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', partitioned_by = ARRAY['id']);
 show create table hive.test_schema.t0;
 INSERT INTO hive.test_schema.t0 VALUES ('Test1', 10);
 INSERT INTO hive.test_schema.t0 VALUES ('Test2', 20);
