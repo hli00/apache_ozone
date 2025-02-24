@@ -18,7 +18,7 @@
 
 services:
   trino:
-    image: new-trino-image
+    image: new-trino-image:latest
     depends_on:
       - metastore
 #      - spark-iceberg  #For trino iceberg connector
