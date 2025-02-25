@@ -18,7 +18,7 @@
 
 services:
   spark-iceberg:
-    image: tabulario/spark-iceberg:3.3.2_1.2.1
+    image: tabulario/spark-iceberg:latest
     depends_on:
       - iceberg-rest
       - s3g
@@ -34,7 +34,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=any
       - AWS_REGION=us-east-1
   iceberg-rest:
-    image: tabulario/iceberg-rest:0.5.0
+    image: tabulario/iceberg-rest:latest
     ports:
       - 8181:8181
     environment:
