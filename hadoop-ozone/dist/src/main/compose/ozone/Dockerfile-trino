@@ -1,4 +1,4 @@
-FROM trinodb/trino:420
+FROM trinodb/trino:latest
 
 USER root
 

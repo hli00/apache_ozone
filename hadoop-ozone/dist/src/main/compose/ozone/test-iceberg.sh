@@ -36,8 +36,6 @@ export BUCKET=warehouse
 
 execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
 
-docker-compose exec trino bash -c "mkdir -p /opt/tiering/trino/data/metastore_db && chmod 777 /opt/tiering/trino/data/metastore_db"
-
 execute_command_in_container trino trino <<EOF
 CREATE SCHEMA iceberg.test_schema WITH (location = 's3://warehouse/');
 show CREATE SCHEMA iceberg.test_schema;
