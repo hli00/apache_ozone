@@ -1,4 +1,5 @@
-FROM trinodb/trino:latest
+#FROM trinodb/trino:latest
+FROM trino:latest
 
 USER root
 
