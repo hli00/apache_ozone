@@ -20,6 +20,7 @@ services:
   trino:
     image: new-trino-image:latest
     depends_on:
+      - s3g
       - metastore
 #      - spark-iceberg  #For trino iceberg connector
     volumes:
@@ -28,3 +29,5 @@ services:
 #      - ./trino_hive_jars:/usr/lib/trino/plugin/hive/hdfs
 #      - ./trino_hive_jars:/usr/lib/trino/lib
 #      - ../..:/opt/tiering
+    ports:
+      - "8081:8080"
