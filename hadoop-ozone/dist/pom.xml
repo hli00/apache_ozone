@@ -166,6 +166,25 @@
                 <resource>
                   <directory>src/main/compose</directory>
                   <filtering>true</filtering>
+                  <excludes>
+                    <exclude>**/*.jar</exclude>
+                    <!-- Exclude JAR files from filtering -->
+                  </excludes>
+                </resource>
+                <!-- Copy JAR files separately without filtering -->
+                <resource>
+                  <directory>src/main/compose</directory>
+                  <filtering>false</filtering>
+                  <includes>
+                    <include>**/*.jar</include>
+                    <!-- Copy all JAR files -->
+                  </includes>
+                </resource>
+                <!-- Copy JAR files in trino_ozone_jars separately without filtering -->
+                <resource>
+                  <directory>src/main/compose/ozone/trino_ozone_jars</directory>
+                  <filtering>false</filtering>
+                  <!-- Ensure no filtering -->
                 </resource>
               </resources>
             </configuration>

@@ -18,9 +18,11 @@
 
 services:
   trino:
-    image: trino:latest
+    image: trino-ofs:latest
     depends_on:
       - spark-iceberg  #For trino iceberg connector
     volumes:
       - ./trino.catalog:/etc/trino/catalog
       - ./trino.config/log.properties:/etc/trino/log.properties
+    ports:
+      - "8081:8080"

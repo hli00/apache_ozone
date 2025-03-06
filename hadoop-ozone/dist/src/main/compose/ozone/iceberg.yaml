@@ -21,27 +21,29 @@ services:
     image: tabulario/spark-iceberg:latest
     depends_on:
       - iceberg-rest
-      - s3g
+#      - s3g
     volumes:
       - ./spark.conf:/opt/spark/conf
+      - ./ozone.config/core-site.xml:/etc/hadoop/core-site.xml
+      - ./ozone.config/ozone-site.xml:/etc/hadoop/ozone-site.xml
     ports:
       - 8888:8888
       - 8080:8080
       - 10000:10000
       - 10001:10001
-    environment:
-      - AWS_ACCESS_KEY_ID=any
-      - AWS_SECRET_ACCESS_KEY=any
-      - AWS_REGION=us-east-1
+#    environment:
+#      - AWS_ACCESS_KEY_ID=any
+#      - AWS_SECRET_ACCESS_KEY=any
+#      - AWS_REGION=us-east-1
   iceberg-rest:
     image: tabulario/iceberg-rest:latest
     ports:
       - 8181:8181
     environment:
-      - AWS_ACCESS_KEY_ID=any
-      - AWS_SECRET_ACCESS_KEY=any
-      - AWS_REGION=us-east-1
+#      - AWS_ACCESS_KEY_ID=any
+#      - AWS_SECRET_ACCESS_KEY=any
+#      - AWS_REGION=us-east-1
       - CATALOG_WAREHOUSE=s3://warehouse/
       - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
-      - CATALOG_S3_ENDPOINT=http://s3g:9878/
-      - CATALOG_S3_PATH__STYLE__ACCESS=true
+#      - CATALOG_S3_ENDPOINT=http://s3g:9878/
+#      - CATALOG_S3_PATH__STYLE__ACCESS=true

@@ -34,12 +34,13 @@ start_docker_env 3
 
 export BUCKET=warehouse
 
-execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
+#execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
 
 execute_command_in_container trino trino <<EOF
-CREATE SCHEMA iceberg.test_schema WITH (location = 's3://warehouse/');
+CREATE SCHEMA iceberg.test_schema WITH (location = 'ofs://om/volume/bucket');
 show CREATE SCHEMA iceberg.test_schema;
-CREATE TABLE iceberg.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema/t0'); 
+-- CREATE TABLE iceberg.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema/t0');
+CREATE TABLE iceberg.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET');
 show create table iceberg.test_schema.t0;
 INSERT INTO iceberg.test_schema.t0 VALUES ('Test1', 10);
 INSERT INTO iceberg.test_schema.t0 VALUES ('Test2', 20);
