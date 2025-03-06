@@ -41,13 +41,13 @@ services:
       SERVICE_OPTS: "-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db -Djavax.jdo.option.ConnectionUserName=hive -Djavax.jdo.option.ConnectionPassword=password" # Use Docker secrets in production
     volumes:
       # - warehouse:/opt/hive/data/warehouse
-      - ../../etc/hadoop:/opt/tiering/etc/hadoop
+      # - ../../etc/hadoop:/opt/tiering/etc/hadoop
       - ./hive.config/hive-site.xml:/opt/hive/conf/hive-site.xml
 #    networks:
 #      - my-network
     depends_on:
-      - s3g
       - postgres
+#      - s3g
 
   # hiveserver2:
   #   image: my-hive-metastore:latest # Use the same image, or a dedicated hiveserver2 image if you have one
