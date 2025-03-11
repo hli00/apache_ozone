@@ -388,7 +388,7 @@ stop_docker_env(){
     down_repeats=3
     for i in $(seq 1 $down_repeats)
     do
-      if docker-compose --ansi never --profile "*" down --remove-orphans; then
+      if docker-compose --ansi never --profile "*" stop --remove-orphans; then
         OZONE_COMPOSE_RUNNING=false
         return
       fi

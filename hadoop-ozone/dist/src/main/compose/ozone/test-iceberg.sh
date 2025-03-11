@@ -22,7 +22,7 @@ export COMPOSE_DIR
 
 export SECURITY_ENABLED=false
 export OZONE_REPLICATION_FACTOR=3
-export COMPOSE_FILE=docker-compose.yaml:iceberg.yaml:trino.yaml
+export COMPOSE_FILE=docker-compose.yaml:hive.yaml:iceberg.yaml:trino.yaml
 #export COMPOSE_FILE=docker-compose.yaml:hive.yaml:trino.yaml
 
 export KEEP_ENV_RUNNING=true
@@ -34,19 +34,24 @@ start_docker_env 3
 
 export BUCKET=warehouse
 
+docker-compose exec om ozone sh volume create /volume
+docker-compose exec om ozone sh bucket create /volume/bucket
+
 #execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
 
 execute_command_in_container trino trino <<EOF
-CREATE SCHEMA iceberg.test_schema WITH (location = 'ofs://om/volume/bucket');
-show CREATE SCHEMA iceberg.test_schema;
--- CREATE TABLE iceberg.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema/t0');
-CREATE TABLE iceberg.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET');
-show create table iceberg.test_schema.t0;
-INSERT INTO iceberg.test_schema.t0 VALUES ('Test1', 10);
-INSERT INTO iceberg.test_schema.t0 VALUES ('Test2', 20);
-INSERT INTO iceberg.test_schema.t0 VALUES ('Test2', 30);
-SELECT * FROM iceberg.test_schema.t0;
-SELECT count(id) FROM iceberg.test_schema.t0 group by name;
+DROP TABLE IF EXISTS iceberg.test_schema00.t0;
+DROP SCHEMA IF EXISTS iceberg.test_schema00;
+CREATE SCHEMA iceberg.test_schema00 WITH (location = 'ofs://om/volume/bucket');
+show CREATE SCHEMA iceberg.test_schema00;
+-- CREATE TABLE iceberg.test_schema00.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema00/t0');
+CREATE TABLE iceberg.test_schema00.t0(name VARCHAR, id INT) with (format = 'PARQUET');
+show create table iceberg.test_schema00.t0;
+INSERT INTO iceberg.test_schema00.t0 VALUES ('Test1', 10);
+INSERT INTO iceberg.test_schema00.t0 VALUES ('Test2', 20);
+INSERT INTO iceberg.test_schema00.t0 VALUES ('Test2', 30);
+SELECT * FROM iceberg.test_schema00.t0;
+SELECT count(id) FROM iceberg.test_schema00.t0 group by name;
 EOF
 
 execute_robot_test scm -v BUCKET:${BUCKET} integration/iceberg.robot
