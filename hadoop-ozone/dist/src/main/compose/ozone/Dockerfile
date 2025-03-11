@@ -11,4 +11,4 @@ COPY ./trino_ozone_jars/ozone-filesystem-hadoop3-client-1.4.0.7.3.1.100-SNAPSHOT
 
 USER trino
 
-#Command to build the image: docker build -t trino-ofs:latest .
+#Command to build the image: docker build -t trino-iceberg-ofs:latest .

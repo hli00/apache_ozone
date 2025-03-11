@@ -18,7 +18,7 @@
 
 services:
   trino:
-    image: trino-ofs:latest
+    image: trino-iceberg-ofs:latest
     depends_on:
       - spark-iceberg  #For trino iceberg connector
     volumes:
