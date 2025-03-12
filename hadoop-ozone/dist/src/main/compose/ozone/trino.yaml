@@ -18,16 +18,13 @@
 
 services:
   trino:
-    image: new-trino-image:latest
+    image: trino-ofs:latest
     depends_on:
-      - s3g
       - metastore
-#      - spark-iceberg  #For trino iceberg connector
+
     volumes:
       - ./trino.catalog:/etc/trino/catalog
       - ./trino.config/log.properties:/etc/trino/log.properties
-#      - ./trino_hive_jars:/usr/lib/trino/plugin/hive/hdfs
-#      - ./trino_hive_jars:/usr/lib/trino/lib
-#      - ../..:/opt/tiering
+
     ports:
       - "8081:8080"

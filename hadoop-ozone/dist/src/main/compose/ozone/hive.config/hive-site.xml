@@ -60,37 +60,20 @@
         <name>hive.metastore.authorization.storage.checks</name>
         <value>false</value>
     </property>
-<property>
-    <name>fs.s3a.access.key</name>
-    <value>any</value>
-</property>
-
-<property>
-    <name>fs.s3a.secret.key</name>
-    <value>any</value>
-</property>
-
-<property>
-    <name>fs.s3a.endpoint</name>
-    <value>http://s3g:9878/</value>
-</property>
-
-<property>
-    <name>fs.s3a.path.style.access</name>
-    <value>true</value>
-</property>
-
-<property>
-    <name>fs.s3a.connection.ssl.enabled</name>
-    <value>false</value>
-</property>
-<property>
-    <name>hive.metastore.warehouse.dir</name>
-    <value>s3a://warehouse/</value>
-</property>
-<property>
-    <name>fs.s3a.impl</name>
-    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
-</property>
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+<!--        <value>ofs://om/ozone_warehouse</value>-->
+        <value>ofs://om/volume1/bucket1/</value>
+        <description>does ozone need this setting</description>
+    </property>
+<!--    <property>-->
+<!--        <name>hive.temporary-staging-directory-path</name>-->
+<!--        <value>ofs://om/volume1/bucket1/tmp/presto-trino/</value>-->
+<!--        <description>No need</description>-->
+<!--    </property>-->
+    <property>
+        <name>fs.ofs.impl</name>
+        <value>org.apache.hadoop.fs.ozone.RootedOzoneFileSystem</value>
+    </property>
 
 </configuration>

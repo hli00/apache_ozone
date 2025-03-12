@@ -32,21 +32,23 @@ source "$COMPOSE_DIR/../testlib.sh"
 
 start_docker_env 3
 
-export BUCKET=warehouse
+#export BUCKET=warehouse
+#execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
 
-execute_command_in_container s3g ozone sh bucket create --layout OBJECT_STORE /s3v/${BUCKET}
-
-#docker-compose exec trino bash -c "mkdir -p /opt/tiering/trino/data/metastore_db && chmod 777 /opt/tiering/trino/data/metastore_db"
-
-# docker cp ./trino_hive_jars/aws-java-sdk-bundle-1.11.1026.jar ozone-trino-1:/usr/lib/trino/plugin/hive/
-# docker cp ./trino_hive_jars/hadoop-aws-3.3.1.jar ozone-trino-1:/usr/lib/trino/plugin/hive/
+# workaround for HDDS-11132 that affects 1.4.0
+docker-compose exec om ozone sh volume create /volume1
+docker-compose exec om ozone sh bucket create /volume1/bucket1
+#docker-compose exec om ozone sh bucket create --layout LEGACY /volume1/bucket1
 
 execute_command_in_container trino trino <<EOF
 -- CREATE SCHEMA hive.test_schema WITH (location = 's3://warehouse/');
+DROP TABLE IF EXISTS hive.test_schema.t0;
+DROP SCHEMA IF EXISTS hive.test_schema;
 CREATE SCHEMA hive.test_schema;
 show CREATE SCHEMA hive.test_schema;
 -- CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', location = 's3://warehouse/test_schema/t0');
-CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', partitioned_by = ARRAY['id']);
+-- CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', partitioned_by = ARRAY['id']);
+CREATE TABLE hive.test_schema.t0(name VARCHAR, id INT) with (format = 'PARQUET', partitioned_by = ARRAY['id'], external_location = 'ofs://om/volume1/bucket1/');
 show create table hive.test_schema.t0;
 INSERT INTO hive.test_schema.t0 VALUES ('Test1', 10);
 INSERT INTO hive.test_schema.t0 VALUES ('Test2', 20);

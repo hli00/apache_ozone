@@ -1,16 +1,11 @@
-#FROM trinodb/trino:latest
-FROM trino:latest
+FROM apache/hive:4.0.1
+RUN mkdir -p /opt/hive/lib
+#COPY postgresql-42.7.5.jar /opt/hive/lib/
+#RUN chmod 644 /opt/hive/lib/postgresql-42.7.5.jar
+COPY --chown=root:root ./trino_hive_jars/postgresql-42.7.5.jar /opt/hive/lib/
+COPY --chown=root:root ./trino_ozone_jars/ozone-filesystem-hadoop3-1.4.0.7.3.1.100-SNAPSHOT.jar /opt/hadoop/share/hadoop/hdfs/
 
-USER root
+RUN ls -l /opt/hive/lib  # Optional: For debugging
 
-#COPY ./trino_hive_jars/aws-java-sdk-bundle-1.11.1026.jar /usr/lib/trino/plugin/hive/
-#COPY ./trino_hive_jars/hadoop-aws-3.3.1.jar /usr/lib/trino/plugin/hive/
-#COPY ./trino_hive_jars/aws-java-sdk-bundle-1.11.1026.jar /usr/lib/trino/lib/
-COPY ./trino_hive_jars/httpclient-4.3.6.jar /usr/lib/trino/lib/
 
-#RUN chown -R trino:trino /usr/lib/trino/plugin/hive/aws-java-sdk-bundle-1.11.1026.jar /usr/lib/trino/plugin/hive/hadoop-aws-3.3.1.jar
-
-USER trino
-
-#Command to build the image: docker build -t new-trino-image:latest .
-
+#Command to build the image: docker build -t hive-metastore-ofs:latest .

@@ -31,7 +31,7 @@ services:
 #      - my-network
 
   metastore:
-    image: my-hive-metastore:latest #apache/hive:${HIVE_VERSION}
+    image: hive-metastore-ofs:latest #apache/hive:${HIVE_VERSION}
     ports:
       - "9083:9083"
     environment:
@@ -43,6 +43,7 @@ services:
       # - warehouse:/opt/hive/data/warehouse
       # - ../../etc/hadoop:/opt/tiering/etc/hadoop
       - ./hive.config/hive-site.xml:/opt/hive/conf/hive-site.xml
+      # - ./hive.config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
 #    networks:
 #      - my-network
     depends_on:
